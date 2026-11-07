@@ -5,16 +5,18 @@
 //!
 //!  1. run `zypper --non-interactive <cmd> --dry-run` to get the plan,
 //!  2. render it and ask for confirmation ourselves,
-//!  3. run `zypper --non-interactive --no-refresh <cmd>` to do the work,
-//!     turning its `--xmlout` progress stream into a uv-style progress bar.
+//!  3. run `zypper --non-interactive --no-refresh <cmd>` to do the work.
+//!
+//! This module parses zypper's `--xmlout` stream into semantic events and
+//! hands them to the active theme's [`View`]; it prints nothing itself.
 
-use std::io::{BufReader, IsTerminal, Read, Write};
-use std::time::{Duration, Instant};
+use std::io::{BufReader, Read, Write};
+use std::time::Instant;
 
 use anyhow::Result;
 use console::style;
-use indicatif::ProgressBar;
 
+use crate::theme::{Item, MsgKind, Plan, Verb, View, ViewKind, theme};
 use crate::ui::{self, Change};
 use crate::xml::{Node, StreamReader};
 use crate::zypper::{self, exit};
@@ -31,151 +33,35 @@ pub struct Options {
     pub verbose: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct Item {
-    pub change: Change,
-    pub name: String,
-    pub kind: String,
-    pub edition: String,
-    pub edition_old: Option<String>,
-}
-
-#[derive(Debug, Default)]
-pub struct Plan {
-    pub items: Vec<Item>,
-    pub download: i64,
-    pub space_diff: i64,
-    pub need_reboot: bool,
-}
-
-impl Plan {
-    fn from_node(n: &Node) -> Plan {
-        let mut items = Vec::new();
-        for group in &n.children {
-            let Some(change) = Change::from_tag(&group.name) else {
-                continue;
-            };
-            for s in group.children_named("solvable") {
-                items.push(Item {
-                    change,
-                    name: s.attr_or("name", "?").to_string(),
-                    kind: s
-                        .attr("type")
-                        .or(s.attr("kind"))
-                        .unwrap_or("package")
-                        .to_string(),
-                    edition: s.attr_or("edition", "").to_string(),
-                    edition_old: s.attr("edition-old").map(str::to_string),
-                });
-            }
-        }
-        items.sort_by(|a, b| (a.change, &a.name).cmp(&(b.change, &b.name)));
-        let num = |k: &str| n.attr(k).and_then(|v| v.parse().ok()).unwrap_or(0);
-        Plan {
-            items,
-            download: num("download-size"),
-            space_diff: num("space-usage-diff"),
-            need_reboot: n.attr("need-reboot") == Some("1") || n.attr("need-reboot") == Some("true"),
+pub fn plan_from_node(n: &Node) -> Plan {
+    let mut items = Vec::new();
+    for group in &n.children {
+        let Some(change) = Change::from_tag(&group.name) else {
+            continue;
+        };
+        for s in group.children_named("solvable") {
+            items.push(Item {
+                change,
+                name: s.attr_or("name", "?").to_string(),
+                kind: s.attr("type").or(s.attr("kind")).unwrap_or("package").to_string(),
+                edition: s.attr_or("edition", "").to_string(),
+                edition_old: s.attr("edition-old").map(str::to_string),
+                arch: s.attr_or("arch", "").to_string(),
+                repo: s.attr_or("repository", "").to_string(),
+            });
         }
     }
-
-    fn count(&self, c: Change) -> usize {
-        self.items.iter().filter(|i| i.change == c).count()
+    items.sort_by(|a, b| (a.change, &a.name).cmp(&(b.change, &b.name)));
+    let num = |k: &str| n.attr(k).and_then(|v| v.parse().ok()).unwrap_or(0);
+    Plan {
+        items,
+        download: num("download-size"),
+        space_diff: num("space-usage-diff"),
+        installed_size: num("space-usage-installed"),
+        removed_size: num("space-usage-removed"),
+        need_reboot: matches!(n.attr("need-reboot"), Some("1") | Some("true")),
+        requested: Vec::new(),
     }
-
-    fn breakdown(&self, future: bool) -> String {
-        let order = [
-            Change::Install,
-            Change::Upgrade,
-            Change::Downgrade,
-            Change::Reinstall,
-            Change::ArchChange,
-            Change::Remove,
-        ];
-        order
-            .iter()
-            .filter_map(|&c| {
-                let n = self.count(c);
-                (n > 0).then(|| {
-                    if future {
-                        format!("{} to {}", style(n).bold(), c.future())
-                    } else {
-                        format!("{} {}", style(n).bold(), c.past())
-                    }
-                })
-            })
-            .collect::<Vec<_>>()
-            .join(&ui::dim(" · "))
-    }
-
-    fn render(&self) {
-        let width = self
-            .items
-            .iter()
-            .map(|i| display_name(i).chars().count())
-            .max()
-            .unwrap_or(0)
-            .min(44);
-        for item in &self.items {
-            let name = display_name(item);
-            let pad = " ".repeat(width.saturating_sub(name.chars().count()));
-            let name_s = if item.change == Change::Remove {
-                style(&name).red().to_string()
-            } else {
-                style(&name).bold().to_string()
-            };
-            let ver = match (&item.edition_old, item.change) {
-                (Some(old), Change::Upgrade | Change::Downgrade) => {
-                    let (o, n) = ui::version_diff(old, &item.edition);
-                    format!("{o} {} {n}", ui::dim("→"))
-                }
-                _ => ui::dim(&item.edition),
-            };
-            ui::eprint_line(format!(" {} {name_s}{pad} {ver}", ui::marker(item.change)));
-        }
-
-        let mut parts = vec![self.breakdown(true)];
-        if self.download > 0 {
-            parts.push(format!("{} to download", style(ui::bytes(self.download)).bold()));
-        }
-        if self.space_diff != 0 {
-            let sign = if self.space_diff > 0 { "+" } else { "" };
-            parts.push(format!(
-                "{} disk",
-                style(format!("{sign}{}", ui::bytes(self.space_diff))).bold()
-            ));
-        }
-        ui::eprint_line("");
-        ui::eprint_line(format!("  {}", parts.join(&ui::dim(" · "))));
-        if self.need_reboot {
-            ui::warning("this transaction will require a reboot");
-        }
-    }
-}
-
-fn display_name(i: &Item) -> String {
-    if i.kind != "package" && !i.kind.is_empty() {
-        format!("{}:{}", i.kind, i.name)
-    } else {
-        i.name.clone()
-    }
-}
-
-const VERBS: [&str; 3] = ["Downloading", "Installing", "Removing"];
-
-#[derive(Default, Clone, Copy)]
-struct Stat {
-    count: usize,
-    time: Duration,
-}
-
-/// The single progress bar used while zypper commits. zypper interleaves
-/// downloads and installs ("Retrieving 1/8", "Installing 1/8", ...), so one
-/// bar switches its label and counter rather than starting new bars.
-struct Progress {
-    bar: ProgressBar,
-    verb: usize,
-    since: Instant,
 }
 
 /// What one zypper run produced.
@@ -192,64 +78,25 @@ struct Outcome {
 }
 
 struct Session<'a> {
-    mode: Mode,
+    kind: ViewKind,
     opts: &'a Options,
-    committing: bool,
-    spinner: Option<ProgressBar>,
-    progress: Option<Progress>,
-    stats: [Stat; 3],
-    preloaded: usize,
-    preload_started: Option<Instant>,
+    view: Box<dyn View + 'static>,
     repos_refreshed: usize,
     out: Outcome,
 }
 
 impl<'a> Session<'a> {
-    fn new(mode: Mode, opts: &'a Options) -> Self {
+    fn new(kind: ViewKind, opts: &'a Options, plan: Option<&Plan>) -> Self {
         Session {
-            mode,
+            kind,
             opts,
-            committing: false,
-            spinner: None,
-            progress: None,
-            stats: [Stat::default(); 3],
-            preloaded: 0,
-            preload_started: None,
+            view: theme().view(kind, plan),
             repos_refreshed: 0,
             out: Outcome::default(),
         }
     }
 
-    fn println(&self, s: impl AsRef<str>) {
-        let active = self.progress.as_ref().map(|p| &p.bar).or(self.spinner.as_ref());
-        match active {
-            Some(pb) if !pb.is_hidden() => pb.println(s.as_ref()),
-            _ => ui::eprint_line(s),
-        }
-    }
-
-    fn set_status(&mut self, msg: &str) {
-        let msg = msg.lines().next().unwrap_or("").trim().to_string();
-        if self.progress.is_some() {
-            return; // the bar's message shows the current package
-        }
-        match &self.spinner {
-            Some(sp) => sp.set_message(msg),
-            None => self.spinner = Some(ui::spinner(msg)),
-        }
-    }
-
-    fn clear(&mut self) {
-        if let Some(sp) = self.spinner.take() {
-            sp.finish_and_clear();
-        }
-        if let Some(p) = self.progress.take() {
-            self.stats[p.verb].time += p.since.elapsed();
-            p.bar.finish_and_clear();
-        }
-    }
-
-    /// Run one zypper process to completion, rendering as we go.
+    /// Run one zypper process to completion, feeding the view as we go.
     fn exec(&mut self, sudo: bool, global: &[&str], args: &[String]) -> Result<()> {
         let mut child = zypper::spawn_xml(sudo, global, args)?;
         let stdout = child.stdout.take().unwrap();
@@ -267,15 +114,23 @@ impl<'a> Session<'a> {
             self.handle(&node);
         }
         let status = child.wait()?;
+        self.view.finish();
         self.out.stderr = err_thread.join().unwrap_or_default();
         self.out.code = status.code().unwrap_or(exit::ON_SIGNAL);
         Ok(())
     }
 
+    /// Print a theme-produced line; themes return "" for "nothing".
+    fn print(&self, line: String) {
+        if !line.is_empty() {
+            self.view.println(&line);
+        }
+    }
+
     fn handle(&mut self, node: &Node) {
         match node.name.as_str() {
             "message" => self.on_message(node),
-            "install-summary" => self.out.plan = Some(Plan::from_node(node)),
+            "install-summary" => self.out.plan = Some(plan_from_node(node)),
             "prompt" => self.on_prompt(node),
             "progress" => self.on_progress(node),
             "download" => self.on_download(node),
@@ -300,29 +155,25 @@ impl<'a> Session<'a> {
         match n.attr("type") {
             Some("error") => {
                 self.out.errors += 1;
-                self.println(format!("{} {}", style("error:").red().bold(), text));
+                self.view.println(&theme().message(MsgKind::Error, text));
             }
-            Some("warning") => {
-                self.println(format!("{} {}", style("warning:").yellow().bold(), text));
-            }
+            Some("warning") => self.view.println(&theme().message(MsgKind::Warning, text)),
             _ => self.on_info(text),
         }
     }
 
     fn on_info(&mut self, text: &str) {
         if self.opts.verbose {
-            self.println(ui::dim(text));
+            self.view.println(&ui::dim(text));
         }
-        if self.observe_label(text) {
+        if self.observe_label(text, None, false) {
             return;
         }
         // Parallel downloads: "Preloading: foo-1.0.x86_64.rpm [done]"
         // (or "[Error: ..., trying next mirror.]", which zypper recovers from).
         if let Some(rest) = text.strip_prefix("Preloading: ") {
-            if rest.ends_with("[done]") {
-                self.preloaded += 1;
-                let file = rest.trim_end_matches("[done]").trim();
-                self.set_status(&format!("Downloaded {file}"));
+            if let Some(file) = rest.strip_suffix("[done]") {
+                self.view.preloaded(file.trim());
             }
             return;
         }
@@ -332,35 +183,27 @@ impl<'a> Session<'a> {
         }
         if let Some(name) = text.strip_suffix(" is already installed.") {
             let name = name.trim_matches(|c| c == '\'' || c == '"');
-            self.println(format!(
-                " {} {} {}",
-                style("✓").green().bold(),
-                style(name).bold(),
-                ui::dim("is already installed")
-            ));
+            self.print(theme().already_installed(name));
             return;
         }
         if text.starts_with("No update candidate") || text.contains("is not installed") {
-            self.println(format!(" {} {}", ui::dim("·"), text));
+            self.print(theme().note(text));
             return;
         }
-        if self.mode == Mode::Refresh
+        if self.kind == ViewKind::Refresh
             && let Some(repo) = quoted(text)
         {
-            if text.ends_with("is up to date.") {
+            let updated = text.starts_with("Building repository");
+            if updated || text.ends_with("is up to date.") {
                 self.repos_refreshed += 1;
-                self.println(format!(" {} {repo} {}", style("✓").green().bold(), ui::dim("up to date")));
+                self.print(theme().repo_refreshed(repo, updated));
                 return;
             }
-            if text.starts_with("Building repository") {
-                self.repos_refreshed += 1;
-                self.println(format!(" {} {repo} {}", style("↓").cyan().bold(), style("updated").green()));
-            }
         }
-        if self.committing {
+        if self.kind == ViewKind::Commit {
             self.out.log.push(text.to_string());
         } else {
-            self.set_status(text);
+            self.view.status(text);
         }
     }
 
@@ -376,81 +219,59 @@ impl<'a> Session<'a> {
 
     fn on_progress(&mut self, n: &Node) {
         let name = n.attr_or("name", "");
-        if name.is_empty() || self.observe_label(name) {
+        if name.is_empty() {
             return;
         }
-        if n.attr("done").is_some() && !name.starts_with("Preloading") {
+        let pct = n.attr("value").and_then(|v| v.parse::<u64>().ok());
+        let done = n.attr("done").is_some();
+        if self.observe_label(name, pct, done) {
             return;
         }
         // "Preloading Packages: [ (3.1 MiB / 4.5 MiB) (2.5 KiB/s)]"
+        if name.starts_with("Preload finished") {
+            self.view.preload("", None, true);
+            return;
+        }
         if let Some(rest) = name.strip_prefix("Preloading Packages") {
-            self.preload_started.get_or_insert_with(Instant::now);
-            if n.attr("done").is_some() {
-                return;
-            }
             let detail = rest
                 .trim_start_matches(':')
                 .trim()
                 .trim_matches(|c| c == '[' || c == ']')
                 .replace(") (", " · ")
                 .replace(['(', ')'], "");
-            let detail = detail.trim();
-            let msg = if detail.is_empty() {
-                "Downloading packages…".to_string()
-            } else {
-                format!("Downloading packages {detail}")
-            };
-            self.set_status(&msg);
+            self.view.preload(detail.trim(), pct, done);
             return;
         }
-        let pct = n.attr("value").map(|v| format!(" {v}%")).unwrap_or_default();
-        self.set_status(&format!("{}{pct}", name.trim_end_matches(':')));
+        self.view.step(name, pct, done);
     }
 
     fn on_download(&mut self, n: &Node) {
         if n.attr("done").is_some() {
             return;
         }
-        let rate = n
-            .attr("rate")
-            .and_then(|r| r.parse::<i64>().ok())
-            .filter(|r| *r > 0)
-            .map(|r| format!(" · {}/s", ui::bytes(r)))
-            .unwrap_or_default();
-        let pct = n
-            .attr("percent")
-            .filter(|p| !p.starts_with('-'))
-            .map(|p| format!(" {p}%"))
-            .unwrap_or_default();
-        if let Some(p) = &self.progress {
-            if VERBS[p.verb] == "Downloading" {
-                let base = p.bar.message();
-                let base = base.split(" (").next().unwrap_or("").to_string();
-                p.bar.set_message(format!("{base} ({}{rate})", pct.trim()));
-            }
-            return;
-        }
+        let rate = n.attr("rate").and_then(|r| r.parse::<i64>().ok()).filter(|r| *r > 0);
+        let pct = n.attr("percent").and_then(|p| p.parse::<u64>().ok());
         let url = n.attr_or("url", "");
         let file = url.rsplit('/').find(|s| !s.is_empty()).unwrap_or(url);
-        self.set_status(&format!("Downloading {file}{pct}{rate}"));
+        self.view.download(file, pct, rate);
     }
 
     /// Recognise "Retrieving: foo-1.0-1.x86_64 (repo) (3/12), 1.6 MiB" and
-    /// "(3/12) Installing: foo-1.0-1.x86_64" and drive the bar from them.
-    fn observe_label(&mut self, label: &str) -> bool {
+    /// "(3/12) Installing: foo-1.0-1.x86_64".
+    fn observe_label(&mut self, label: &str, pct: Option<u64>, done: bool) -> bool {
         let Some((i, total)) = parse_counter(label) else {
             return false;
         };
         let verb = if label.starts_with("Retrieving") || label.contains("Downloading") {
-            0
+            Verb::Download
         } else if label.contains("Installing") {
-            1
+            Verb::Install
         } else if label.contains("Removing") {
-            2
+            Verb::Remove
         } else {
             return false;
         };
-        let thing = label
+        let nevra = label
             .split_once(": ")
             .map(|(_, rest)| rest)
             .unwrap_or(label)
@@ -460,56 +281,9 @@ impl<'a> Session<'a> {
             .split(", ")
             .next()
             .unwrap_or("")
-            .trim()
-            .to_string();
-
-        if let Some(t) = self.preload_started.take() {
-            self.println(ui::dim(&format!(
-                "Downloaded {} in {}",
-                ui::plural(self.preloaded, "package"),
-                ui::elapsed(t.elapsed())
-            )));
-            // Packages are now cached; "Retrieving" just reads them back.
-            self.stats[0].count = usize::MAX;
-        }
-        if verb == 0 && self.stats[0].count == usize::MAX {
-            return true;
-        }
-        if let Some(sp) = self.spinner.take() {
-            sp.finish_and_clear();
-        }
-        let p = self.progress.get_or_insert_with(|| Progress {
-            bar: ui::bar(total as u64, VERBS[verb]),
-            verb,
-            since: Instant::now(),
-        });
-        if p.verb != verb {
-            self.stats[p.verb].time += p.since.elapsed();
-            p.verb = verb;
-            p.since = Instant::now();
-            p.bar.set_prefix(VERBS[verb]);
-        }
-        p.bar.set_length(total as u64);
-        p.bar.set_position(i.saturating_sub(1) as u64);
-        p.bar.set_message(thing);
-        let st = &mut self.stats[verb];
-        if st.count != usize::MAX {
-            st.count = st.count.max(i);
-        }
+            .trim();
+        self.view.item(verb, i, total, nevra, pct, done);
         true
-    }
-
-    fn print_stats(&self) {
-        for (verb, past) in [(0, "Downloaded"), (1, "Installed"), (2, "Removed")] {
-            let st = self.stats[verb];
-            if st.count > 0 && st.count != usize::MAX {
-                ui::status(format!(
-                    "{past} {} in {}",
-                    ui::plural(st.count, "package"),
-                    ui::elapsed(st.time)
-                ));
-            }
-        }
     }
 
     /// Print everything we know about a failed run.
@@ -545,7 +319,6 @@ impl<'a> Session<'a> {
             }
         }
         let first_pkg = args.iter().skip(1).find(|s| !s.starts_with('-'));
-        let interactive = format!("sudo zypper {}", args.join(" "));
         match self.out.code {
             exit::INF_CAP_NOT_FOUND => {
                 if let Some(q) = first_pkg {
@@ -557,11 +330,11 @@ impl<'a> Session<'a> {
             }
             _ if !self.out.problems.is_empty() => ui::hint(format!(
                 "run {} to pick a solution interactively",
-                ui::cmd(&interactive)
+                ui::cmd(&format!("sudo zypper {}", args.join(" ")))
             )),
             _ => {
                 let all = self.out.log.join("\n") + &self.out.stderr;
-                if all.contains("license") || self.out.errors > 0 && all.contains("--auto-agree-with-licenses") {
+                if all.contains("--auto-agree-with-licenses") {
                     ui::hint(format!("pass {} to accept package licenses", ui::cmd("--agree-licenses")));
                 }
             }
@@ -622,35 +395,16 @@ fn quoted(s: &str) -> Option<&str> {
     Some(&s[a + 1..a + 1 + b])
 }
 
-pub fn ask_yes_no(question: &str, default: bool) -> Result<bool> {
-    let tty = std::io::stdin().is_terminal();
-    let mut term = ui::stderr();
-    let hint = if default { "[Y/n]" } else { "[y/N]" };
-    write!(term, "{} {} {} ", style("?").cyan().bold(), style(question).bold(), ui::dim(hint))?;
-    term.flush()?;
-    let mut line = String::new();
-    std::io::stdin().read_line(&mut line)?;
-    if !tty {
-        // Piped input: EOF means "no", never silently proceed.
-        let _ = term.write_line(line.trim());
-        if line.is_empty() {
-            return Ok(false);
-        }
-    }
-    let a = line.trim().to_lowercase();
-    Ok(if a.is_empty() { default } else { a == "y" || a == "yes" })
-}
-
 /// Run a zypper command (`subcommand args...`) as root, rendering everything.
 pub fn run(mode: Mode, args: Vec<String>, opts: Options) -> Result<i32> {
     let sudo = zypper::ensure_sudo()?;
+    let th = theme();
     let started = Instant::now();
-    let mut s = Session::new(mode, &opts);
 
     if mode == Mode::Refresh {
-        s.set_status("Refreshing repositories…");
+        th.refresh_start();
+        let mut s = Session::new(ViewKind::Refresh, &opts, None);
         s.exec(sudo, &["--non-interactive"], &args)?;
-        s.clear();
         if !exit::is_success(s.out.code) {
             s.report_failure(&args);
             ui::hint(format!(
@@ -659,58 +413,47 @@ pub fn run(mode: Mode, args: Vec<String>, opts: Options) -> Result<i32> {
             ));
             return Ok(s.out.code);
         }
-        let n = s.repos_refreshed;
-        ui::status(format!(
-            "Refreshed {n} {} in {}",
-            if n == 1 { "repository" } else { "repositories" },
-            ui::elapsed(started.elapsed())
-        ));
+        th.refresh_done(s.repos_refreshed, started.elapsed());
         post_hints(s.out.code);
         return Ok(s.out.code);
     }
 
     // 1. Resolve.
+    th.resolve_start();
     let mut resolve = args.clone();
     resolve.insert(1, "--dry-run".into());
-    s.set_status("Resolving dependencies…");
+    let mut s = Session::new(ViewKind::Resolve, &opts, None);
     s.exec(sudo, &["--non-interactive"], &resolve)?;
-    s.clear();
     if !exit::is_success(s.out.code) {
         s.report_failure(&args);
         return Ok(s.out.code);
     }
     let plan = match s.out.plan.take() {
-        Some(p) if !p.items.is_empty() => p,
+        Some(mut p) if !p.items.is_empty() => {
+            p.requested = args.iter().skip(1).filter(|a| !a.starts_with('-')).cloned().collect();
+            p
+        }
         _ => {
-            ui::status(format!("Nothing to do (checked in {})", ui::elapsed(started.elapsed())));
+            th.nothing_to_do(started.elapsed());
             return Ok(0);
         }
     };
-    ui::status(format!(
-        "Resolved {} in {}",
-        ui::plural(plan.items.len(), "package"),
-        ui::elapsed(started.elapsed())
-    ));
-    plan.render();
+    th.plan(&plan, started.elapsed());
 
     // 2. Confirm.
     if opts.dry_run {
-        ui::hint("dry run, no changes were made");
+        th.dry_run_done();
         return Ok(0);
     }
-    if !opts.yes && !ask_yes_no("Proceed?", true)? {
-        ui::status("Aborted, no changes were made");
+    if !opts.yes && !th.confirm(&th.confirm_question(&plan))? {
+        th.aborted();
         return Ok(1);
     }
 
     // 3. Commit.
     let commit_started = Instant::now();
-    let mut s = Session::new(mode, &opts);
-    s.committing = true;
-    s.set_status("Preparing transaction…");
+    let mut s = Session::new(ViewKind::Commit, &opts, Some(&plan));
     s.exec(sudo, &["--non-interactive", "--no-refresh"], &args)?;
-    s.clear();
-    s.print_stats();
     if !exit::is_success(s.out.code) {
         s.report_failure(&args);
         return Ok(s.out.code);
@@ -720,12 +463,7 @@ pub fn run(mode: Mode, args: Vec<String>, opts: Options) -> Result<i32> {
             ui::eprint_line(ui::dim(l));
         }
     }
-    ui::eprint_line(format!(
-        "{} {} {}",
-        style("✓").green().bold(),
-        plan.breakdown(false),
-        ui::dim(&format!("in {}", ui::elapsed(commit_started.elapsed())))
-    ));
+    th.done(&plan, commit_started.elapsed());
     post_hints(s.out.code);
     Ok(s.out.code)
 }
@@ -757,10 +495,11 @@ mod tests {
 <to-remove><solvable type="package" name="old" edition="1.0" arch="noarch"/></to-remove>
 </install-summary></stream>"#;
         let nodes = crate::xml::parse_all(xml);
-        let plan = Plan::from_node(&nodes[0]);
+        let plan = plan_from_node(&nodes[0]);
         assert_eq!(plan.items.len(), 3);
         assert_eq!(plan.items[0].change, Change::Upgrade);
         assert_eq!(plan.items[2].change, Change::Remove);
         assert_eq!(plan.download, 2048);
+        assert_eq!(plan.lookup("ripgrep-15.2.0-1.3.x86_64").map(|i| i.name.as_str()), Some("ripgrep"));
     }
 }

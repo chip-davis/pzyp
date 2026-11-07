@@ -1,5 +1,7 @@
+mod config;
 mod query;
 mod session;
+mod theme;
 mod ui;
 mod xml;
 mod zypper;
@@ -9,7 +11,9 @@ use std::process::{Command, ExitCode};
 use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Args, Parser, Subcommand};
 
+use config::Config;
 use session::{Mode, Options};
+use theme::StyleName;
 
 const STYLES: Styles = Styles::styled()
     .header(AnsiColor::Green.on_default().effects(Effects::BOLD))
@@ -27,8 +31,23 @@ const STYLES: Styles = Styles::styled()
 #[derive(Parser)]
 #[command(name = "pzyp", version, styles = STYLES, allow_external_subcommands = true)]
 struct Cli {
+    /// Output style (overrides $PZYP_STYLE and the config file)
+    #[arg(long, global = true, value_name = "STYLE")]
+    style: Option<StyleName>,
     #[command(subcommand)]
     command: Cmd,
+}
+
+#[derive(Subcommand)]
+enum ConfigCmd {
+    /// Print a setting's value
+    Get { key: String },
+    /// Change a setting (e.g. `pzyp config set style pacman`)
+    Set { key: String, value: String },
+    /// Reset a setting to its default
+    Unset { key: String },
+    /// Print the config file's path
+    Path,
 }
 
 #[derive(Args, Clone)]
@@ -149,8 +168,75 @@ enum Cmd {
         /// Only refresh these repositories
         repos: Vec<String>,
     },
+    /// Show or change pzyp settings (style, color, candy)
+    Config {
+        #[command(subcommand)]
+        action: Option<ConfigCmd>,
+    },
     #[command(external_subcommand)]
     External(Vec<String>),
+}
+
+fn config_cmd(action: Option<ConfigCmd>, cfg: Config, flag: Option<StyleName>) -> anyhow::Result<i32> {
+    let path = config::path();
+    let path_s = path
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "(unknown)".into());
+    match action {
+        None => {
+            println!("{}", ui::dim(&format!("# {path_s}")));
+            let style = cfg.resolve_style(flag);
+            let source = if flag.is_some() {
+                "--style"
+            } else if std::env::var("PZYP_STYLE").is_ok() {
+                "PZYP_STYLE"
+            } else if cfg.style.is_some() {
+                "config"
+            } else {
+                "default"
+            };
+            println!("style = \"{}\"  {}", style.as_str(), ui::dim(&format!("# {source}; {}", theme::style_names().replace(", ", " | "))));
+            let color = cfg.color.as_deref().unwrap_or("auto");
+            let source = if cfg.color.is_some() { "config" } else { "default" };
+            println!("color = \"{color}\"  {}", ui::dim(&format!("# {source}; auto | always | never")));
+            let source = if cfg.candy.is_some() { "config" } else { "default" };
+            println!("candy = {}  {}", cfg.candy(), ui::dim(&format!("# {source}; pacman-style chomping bars")));
+            Ok(0)
+        }
+        Some(ConfigCmd::Path) => {
+            println!("{path_s}");
+            Ok(0)
+        }
+        Some(ConfigCmd::Get { key }) => {
+            // Print the value in effect, including flag/env overrides.
+            let v = cfg.get(&key)?;
+            match key.as_str() {
+                "style" => println!("{}", cfg.resolve_style(flag).as_str()),
+                "candy" => println!("{}", cfg.candy()),
+                _ => println!("{}", v.unwrap_or("auto")),
+            }
+            Ok(0)
+        }
+        Some(ConfigCmd::Set { key, value }) => {
+            let mut cfg = cfg;
+            cfg.set(&key, Some(&value))?;
+            let p = cfg.save()?;
+            ui::eprint_line(format!(
+                "{} {}",
+                console::style("✓").green().bold(),
+                ui::dim(&format!("set {key} = \"{}\" in {}", value.to_lowercase(), p.display()))
+            ));
+            Ok(0)
+        }
+        Some(ConfigCmd::Unset { key }) => {
+            let mut cfg = cfg;
+            cfg.set(&key, None)?;
+            let p = cfg.save()?;
+            ui::eprint_line(ui::dim(&format!("reset {key} in {}", p.display())));
+            Ok(0)
+        }
+    }
 }
 
 fn tx(sub: &str, flags: &[&str], pkgs: &[String], t: &TxArgs) -> anyhow::Result<i32> {
@@ -173,7 +259,7 @@ fn default_sigpipe() {
     }
 }
 
-fn run(cli: Cli) -> anyhow::Result<i32> {
+fn run(cli: Cli, cfg: Config) -> anyhow::Result<i32> {
     if matches!(
         cli.command,
         Cmd::Search { .. } | Cmd::Info { .. } | Cmd::Updates { .. } | Cmd::Repos
@@ -222,6 +308,7 @@ fn run(cli: Cli) -> anyhow::Result<i32> {
                 Options { yes: false, dry_run: false, verbose: false },
             )
         }
+        Cmd::Config { action } => config_cmd(action, cfg, cli.style),
         Cmd::External(args) => {
             let st = Command::new("zypper").args(&args).status()?;
             Ok(st.code().unwrap_or(1))
@@ -231,7 +318,10 @@ fn run(cli: Cli) -> anyhow::Result<i32> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    match run(cli) {
+    let cfg = Config::load();
+    cfg.apply_color();
+    theme::init(cfg.resolve_style(cli.style), cfg.candy());
+    match run(cli, cfg) {
         Ok(code) => ExitCode::from(code.clamp(0, 255) as u8),
         Err(e) => {
             ui::error(format!("{e:#}"));

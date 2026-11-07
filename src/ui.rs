@@ -4,7 +4,8 @@
 use std::time::Duration;
 
 use console::{Style, Term, style};
-use indicatif::{ProgressBar, ProgressStyle};
+
+use crate::theme::{MsgKind, theme};
 
 pub fn stderr() -> Term {
     Term::stderr()
@@ -20,15 +21,15 @@ pub fn status(s: impl AsRef<str>) {
 }
 
 pub fn error(s: impl AsRef<str>) {
-    eprint_line(format!("{} {}", style("error:").red().bold(), s.as_ref()));
+    eprint_line(theme().message(MsgKind::Error, s.as_ref()));
 }
 
 pub fn warning(s: impl AsRef<str>) {
-    eprint_line(format!("{} {}", style("warning:").yellow().bold(), s.as_ref()));
+    eprint_line(theme().message(MsgKind::Warning, s.as_ref()));
 }
 
 pub fn hint(s: impl AsRef<str>) {
-    eprint_line(format!("{} {}", style("hint:").cyan().bold(), s.as_ref()));
+    eprint_line(theme().hint(s.as_ref()));
 }
 
 /// Highlight a command the user could run, the way uv does: `pzyp search foo`.
@@ -76,32 +77,6 @@ pub fn bytes(n: i64) -> String {
         format!("{v:.1} {}", units[i])
     };
     if neg { format!("-{s}") } else { s }
-}
-
-pub fn spinner(msg: impl Into<String>) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::with_template("{spinner:.dim} {wide_msg:.dim}")
-            .unwrap()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
-    );
-    pb.set_message(msg.into());
-    pb.enable_steady_tick(Duration::from_millis(80));
-    pb
-}
-
-pub fn bar(len: u64, verb: &str) -> ProgressBar {
-    let pb = ProgressBar::new(len);
-    pb.set_style(
-        ProgressStyle::with_template(
-            "{prefix:>11.bold.cyan} {bar:30.green/dim} {pos:>4}/{len:<4} {wide_msg:.dim}",
-        )
-        .unwrap()
-        .progress_chars("━━╌"),
-    );
-    pb.set_prefix(verb.to_string());
-    pb.enable_steady_tick(Duration::from_millis(100));
-    pb
 }
 
 /// Split two version strings and highlight the part that changed in `new`.
@@ -203,6 +178,13 @@ impl Change {
 
 pub fn term_width() -> usize {
     Term::stdout().size_checked().map(|(_, w)| w as usize).unwrap_or(100)
+}
+
+/// Pad (or truncate) to exactly `w` display columns.
+pub fn pad_or_truncate(s: &str, w: usize) -> String {
+    let t = truncate(s, w);
+    let pad = w.saturating_sub(console::measure_text_width(&t));
+    format!("{t}{}", " ".repeat(pad))
 }
 
 /// Truncate to a display width, adding an ellipsis.
