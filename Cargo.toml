@@ -10,7 +10,7 @@ homepage = "https://github.com/chip-davis/pzyp"
 readme = "README.md"
 keywords = ["zypper", "opensuse", "package-manager", "cli"]
 categories = ["command-line-utilities"]
-exclude = [".github/", "assets/", "demo.tape"]
+exclude = [".github/", "assets/", "demo.tape", "dist-workspace.toml", "mise.toml"]
 
 [dependencies]
 anyhow = "1.0.104"
