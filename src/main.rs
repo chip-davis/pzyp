@@ -87,6 +87,9 @@ enum Cmd {
         /// Don't install recommended packages
         #[arg(long)]
         no_recommends: bool,
+        /// Kind of thing to install: package (default), pattern, patch, product or srcpackage
+        #[arg(short = 't', long = "type", value_name = "TYPE", value_parser = KINDS)]
+        kind: Option<String>,
         #[command(flatten)]
         tx: TxArgs,
     },
@@ -98,6 +101,9 @@ enum Cmd {
         /// Also remove dependencies that are no longer needed
         #[arg(short = 'u', long)]
         clean_deps: bool,
+        /// Kind of thing to remove: package (default), pattern, patch, product or srcpackage
+        #[arg(short = 't', long = "type", value_name = "TYPE", value_parser = KINDS)]
+        kind: Option<String>,
         #[command(flatten)]
         tx: TxArgs,
     },
@@ -269,7 +275,16 @@ fn config_cmd(
     }
 }
 
-fn tx(sub: &str, flags: &[&str], pkgs: &[String], t: &TxArgs) -> anyhow::Result<i32> {
+/// zypper's resolvable kinds for `-t/--type`.
+const KINDS: [&str; 5] = ["package", "pattern", "patch", "product", "srcpackage"];
+
+/// `--type=KIND` as one token: the plan treats every argument not starting
+/// with `-` as a requested name, so a separate "pattern" would be miscounted.
+fn type_flag(kind: Option<String>) -> Vec<String> {
+    kind.map(|k| format!("--type={k}")).into_iter().collect()
+}
+
+fn tx(sub: &str, flags: &[String], pkgs: &[String], t: &TxArgs) -> anyhow::Result<i32> {
     let mut args = vec![sub.to_string()];
     args.extend(flags.iter().map(|s| s.to_string()));
     if t.agree_licenses && sub != "remove" {
@@ -300,22 +315,26 @@ fn run(cli: Cli, cfg: Config) -> anyhow::Result<i32> {
         Cmd::Install {
             packages,
             no_recommends,
+            kind,
             tx: t,
         } => {
-            let flags: &[&str] = if no_recommends {
-                &["--no-recommends"]
-            } else {
-                &[]
-            };
-            tx("install", flags, &packages, &t)
+            let mut flags = type_flag(kind);
+            if no_recommends {
+                flags.push("--no-recommends".into());
+            }
+            tx("install", &flags, &packages, &t)
         }
         Cmd::Remove {
             packages,
             clean_deps,
+            kind,
             tx: t,
         } => {
-            let flags: &[&str] = if clean_deps { &["--clean-deps"] } else { &[] };
-            tx("remove", flags, &packages, &t)
+            let mut flags = type_flag(kind);
+            if clean_deps {
+                flags.push("--clean-deps".into());
+            }
+            tx("remove", &flags, &packages, &t)
         }
         Cmd::Update { packages, tx: t } => {
             if packages.is_empty() && query::is_rolling() && !t.yes {
@@ -330,12 +349,12 @@ fn run(cli: Cli, cfg: Config) -> anyhow::Result<i32> {
             no_recommends,
             tx: t,
         } => {
-            let flags: &[&str] = if no_recommends {
-                &["--no-recommends"]
+            let flags: Vec<String> = if no_recommends {
+                vec!["--no-recommends".into()]
             } else {
-                &[]
+                vec![]
             };
-            tx("dist-upgrade", flags, &[], &t)
+            tx("dist-upgrade", &flags, &[], &t)
         }
         Cmd::Patch { tx: t } => tx("patch", &[], &[], &t),
         Cmd::Search {

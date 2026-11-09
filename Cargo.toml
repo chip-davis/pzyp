@@ -1,6 +1,6 @@
 [package]
 name = "pzyp"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "A prettier front-end for zypper, styled after all of your favorite package managers."
 authors = ["chip-davis"]
