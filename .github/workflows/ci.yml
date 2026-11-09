@@ -73,24 +73,14 @@ jobs:
         include:
           - name: ubuntu
             container: null
+          # openSUSE's Tumbleweed-based Rust image: cargo and the linker are
+          # preinstalled, so the job doesn't depend on Tumbleweed's mirrors.
           - name: tumbleweed
-            container: opensuse/tumbleweed
+            container: registry.opensuse.org/opensuse/bci/rust:latest
     steps:
-      - name: Install build tools (openSUSE)
-        if: ${{ matrix.container }}
-        run: |
-          # The image sets no PATH of its own; once a step adds to $GITHUB_PATH
-          # the runner would otherwise drop the system dirs (and bash with them).
-          echo "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$GITHUB_PATH"
-          # Tumbleweed mirrors are sometimes caught mid-sync; retry a few times.
-          for i in 1 2 3; do
-            zypper --non-interactive --gpg-auto-import-keys install --no-recommends git gcc tar gzip curl && exit 0
-            echo "zypper failed (mirror mid-sync?), retrying in 30s"
-            sleep 30
-          done
-          exit 1
       - uses: actions/checkout@v7
       - name: Install Rust
+        if: ${{ !matrix.container }}
         uses: dtolnay/rust-toolchain@stable
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
