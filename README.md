@@ -93,20 +93,49 @@ Total Installed Size:     5.40 MiB
 (2/2) installing ripgrep-bash-completion      [------------------------------] 100%
 ```
 
-Pick one per command with `--style pacman`, per shell with `PZYP_STYLE=pacman`,
-or permanently with:
+## Choosing a style
 
+Three ways to pick a style, from most to least specific:
+
+```sh
+pzyp --style pacman add ripgrep   # just this command
+export PZYP_STYLE=dnf             # this shell session
+pzyp config set style apt         # permanently (saved to the config file)
 ```
-pzyp config set style pacman     # writes ~/.config/pzyp/config.toml
-pzyp config                      # show current settings
-pzyp config unset style          # back to the default
+
+When more than one is set, `--style` wins over `PZYP_STYLE`, which wins over
+the config file. With none of them, pzyp uses `uv`.
+
+## Configuration
+
+Settings live in `~/.config/pzyp/config.toml` (or
+`$XDG_CONFIG_HOME/pzyp/config.toml`). Under `sudo pzyp`, the invoking user's
+file is used, not root's. Manage it with `pzyp config`:
+
+```sh
+pzyp config                    # show every setting, its value and where it came from
+pzyp config get style          # print one setting (including --style / PZYP_STYLE overrides)
+pzyp config set style pacman   # change a setting
+pzyp config unset style        # back to the default
+pzyp config path               # print the config file's path
 ```
 
-Like pacman's `ILoveCandy`, pacman-style bars chomp: `[--------C o  o  o ]`.
-Prefer plain `[#####-----]` bars? `pzyp config set candy false`.
+Or edit the file by hand:
 
-The config file also takes `color = "auto" | "always" | "never"`.
-Precedence: `--style` > `PZYP_STYLE` > config file > default.
+```toml
+style = "pacman"   # uv (default), pacman, dnf, apt, brew or npm
+color = "auto"     # auto (default), always or never
+candy = true       # pacman style: chomping progress bars (default true)
+```
+
+| Setting | Values | Default | What it does |
+|---------|--------|---------|--------------|
+| `style` | `uv`, `pacman`, `dnf`, `apt`, `brew`, `npm` | `uv` | Which package manager pzyp looks like |
+| `color` | `auto`, `always`, `never` | `auto` | `auto` colors output only when writing to a terminal |
+| `candy` | `true`, `false` | `true` | Pacman style only: chomping `[--------C o  o  o ]` bars like pacman's `ILoveCandy`; `false` gives plain `[#####-----]` bars |
+
+If the file is malformed, pzyp prints a warning and uses the defaults instead
+of failing.
 
 ## How it works
 

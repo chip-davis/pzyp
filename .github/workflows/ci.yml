@@ -78,7 +78,7 @@ jobs:
     steps:
       - name: Install build tools (openSUSE)
         if: ${{ matrix.container }}
-        run: zypper --non-interactive install --no-recommends git gcc tar gzip curl
+        run: zypper --non-interactive install --no-recommends bash git gcc tar gzip curl
       - uses: actions/checkout@v7
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
