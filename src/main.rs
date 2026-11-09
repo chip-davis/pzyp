@@ -177,7 +177,11 @@ enum Cmd {
     External(Vec<String>),
 }
 
-fn config_cmd(action: Option<ConfigCmd>, cfg: Config, flag: Option<StyleName>) -> anyhow::Result<i32> {
+fn config_cmd(
+    action: Option<ConfigCmd>,
+    cfg: Config,
+    flag: Option<StyleName>,
+) -> anyhow::Result<i32> {
     let path = config::path();
     let path_s = path
         .as_ref()
@@ -196,12 +200,34 @@ fn config_cmd(action: Option<ConfigCmd>, cfg: Config, flag: Option<StyleName>) -
             } else {
                 "default"
             };
-            println!("style = \"{}\"  {}", style.as_str(), ui::dim(&format!("# {source}; {}", theme::style_names().replace(", ", " | "))));
+            println!(
+                "style = \"{}\"  {}",
+                style.as_str(),
+                ui::dim(&format!(
+                    "# {source}; {}",
+                    theme::style_names().replace(", ", " | ")
+                ))
+            );
             let color = cfg.color.as_deref().unwrap_or("auto");
-            let source = if cfg.color.is_some() { "config" } else { "default" };
-            println!("color = \"{color}\"  {}", ui::dim(&format!("# {source}; auto | always | never")));
-            let source = if cfg.candy.is_some() { "config" } else { "default" };
-            println!("candy = {}  {}", cfg.candy(), ui::dim(&format!("# {source}; pacman-style chomping bars")));
+            let source = if cfg.color.is_some() {
+                "config"
+            } else {
+                "default"
+            };
+            println!(
+                "color = \"{color}\"  {}",
+                ui::dim(&format!("# {source}; auto | always | never"))
+            );
+            let source = if cfg.candy.is_some() {
+                "config"
+            } else {
+                "default"
+            };
+            println!(
+                "candy = {}  {}",
+                cfg.candy(),
+                ui::dim(&format!("# {source}; pacman-style chomping bars"))
+            );
             Ok(0)
         }
         Some(ConfigCmd::Path) => {
@@ -225,7 +251,11 @@ fn config_cmd(action: Option<ConfigCmd>, cfg: Config, flag: Option<StyleName>) -
             ui::eprint_line(format!(
                 "{} {}",
                 console::style("✓").green().bold(),
-                ui::dim(&format!("set {key} = \"{}\" in {}", value.to_lowercase(), p.display()))
+                ui::dim(&format!(
+                    "set {key} = \"{}\" in {}",
+                    value.to_lowercase(),
+                    p.display()
+                ))
             ));
             Ok(0)
         }
@@ -267,11 +297,23 @@ fn run(cli: Cli, cfg: Config) -> anyhow::Result<i32> {
         default_sigpipe();
     }
     match cli.command {
-        Cmd::Install { packages, no_recommends, tx: t } => {
-            let flags: &[&str] = if no_recommends { &["--no-recommends"] } else { &[] };
+        Cmd::Install {
+            packages,
+            no_recommends,
+            tx: t,
+        } => {
+            let flags: &[&str] = if no_recommends {
+                &["--no-recommends"]
+            } else {
+                &[]
+            };
             tx("install", flags, &packages, &t)
         }
-        Cmd::Remove { packages, clean_deps, tx: t } => {
+        Cmd::Remove {
+            packages,
+            clean_deps,
+            tx: t,
+        } => {
             let flags: &[&str] = if clean_deps { &["--clean-deps"] } else { &[] };
             tx("remove", flags, &packages, &t)
         }
@@ -284,14 +326,34 @@ fn run(cli: Cli, cfg: Config) -> anyhow::Result<i32> {
             }
             tx("update", &[], &packages, &t)
         }
-        Cmd::Dup { no_recommends, tx: t } => {
-            let flags: &[&str] = if no_recommends { &["--no-recommends"] } else { &[] };
+        Cmd::Dup {
+            no_recommends,
+            tx: t,
+        } => {
+            let flags: &[&str] = if no_recommends {
+                &["--no-recommends"]
+            } else {
+                &[]
+            };
             tx("dist-upgrade", flags, &[], &t)
         }
         Cmd::Patch { tx: t } => tx("patch", &[], &[], &t),
-        Cmd::Search { terms, installed, not_installed, details, description, exact } => query::search(
+        Cmd::Search {
+            terms,
+            installed,
+            not_installed,
+            details,
+            description,
+            exact,
+        } => query::search(
             &terms,
-            query::SearchOpts { installed, not_installed, details, description, exact },
+            query::SearchOpts {
+                installed,
+                not_installed,
+                details,
+                description,
+                exact,
+            },
         ),
         Cmd::Info { packages } => query::info(&packages),
         Cmd::Updates { patches } => query::updates(patches),
@@ -305,7 +367,11 @@ fn run(cli: Cli, cfg: Config) -> anyhow::Result<i32> {
             session::run(
                 Mode::Refresh,
                 args,
-                Options { yes: false, dry_run: false, verbose: false },
+                Options {
+                    yes: false,
+                    dry_run: false,
+                    verbose: false,
+                },
             )
         }
         Cmd::Config { action } => config_cmd(action, cfg, cli.style),

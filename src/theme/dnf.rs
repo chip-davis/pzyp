@@ -55,9 +55,12 @@ fn live(prefix: &str) -> ProgressBar {
             prefix_w().saturating_sub(15)
         ))
         .unwrap()
-        .with_key("dnftime", |s: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
-            let _ = w.write_str(&dnf_time(s.elapsed()));
-        })
+        .with_key(
+            "dnftime",
+            |s: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                let _ = w.write_str(&dnf_time(s.elapsed()));
+            },
+        )
         .progress_chars("== "),
     );
     pb.set_prefix(prefix.to_string());
@@ -75,7 +78,10 @@ fn done_row(prefix: &str, rate: &str, took: Duration) -> String {
 
 impl Theme for Dnf {
     fn message(&self, kind: MsgKind, text: &str) -> String {
-        if let Some(pkg) = text.strip_prefix("No provider of '").and_then(|r| r.strip_suffix("' found.")) {
+        if let Some(pkg) = text
+            .strip_prefix("No provider of '")
+            .and_then(|r| r.strip_suffix("' found."))
+        {
             return format!("No match for argument: {pkg}");
         }
         match kind {
@@ -105,18 +111,37 @@ impl Theme for Dnf {
         loaded_lines();
         let q = query.to_lowercase();
         let label = |r: &SearchRow| {
-            if r.arch.is_empty() { r.label() } else { format!("{}.{}", r.label(), r.arch) }
+            if r.arch.is_empty() {
+                r.label()
+            } else {
+                format!("{}.{}", r.label(), r.arch)
+            }
         };
-        let w = rows.iter().map(|r| label(r).chars().count()).max().unwrap_or(0).min(48);
+        let w = rows
+            .iter()
+            .map(|r| label(r).chars().count())
+            .max()
+            .unwrap_or(0)
+            .min(48);
         let groups = [
-            ("name (exact)", rows.iter().filter(|r| r.name.to_lowercase() == q).collect::<Vec<_>>()),
+            (
+                "name (exact)",
+                rows.iter()
+                    .filter(|r| r.name.to_lowercase() == q)
+                    .collect::<Vec<_>>(),
+            ),
             (
                 "name",
                 rows.iter()
                     .filter(|r| r.name.to_lowercase() != q && r.name.to_lowercase().contains(&q))
                     .collect(),
             ),
-            ("summary", rows.iter().filter(|r| !r.name.to_lowercase().contains(&q)).collect()),
+            (
+                "summary",
+                rows.iter()
+                    .filter(|r| !r.name.to_lowercase().contains(&q))
+                    .collect(),
+            ),
         ];
         for (field, group) in groups {
             if group.is_empty() {
@@ -147,9 +172,23 @@ impl Theme for Dnf {
     }
 
     fn info(&self, fields: &InfoFields) {
-        let get = |k: &str| fields.iter().find(|(f, _)| f == k).map(|(_, v)| v.as_str()).unwrap_or("");
-        let installed = get("Status").starts_with("up-to-date") || get("Status").starts_with("out-of-date");
-        println!("{}", if installed { "Installed packages" } else { "Available packages" });
+        let get = |k: &str| {
+            fields
+                .iter()
+                .find(|(f, _)| f == k)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
+        let installed =
+            get("Status").starts_with("up-to-date") || get("Status").starts_with("out-of-date");
+        println!(
+            "{}",
+            if installed {
+                "Installed packages"
+            } else {
+                "Available packages"
+            }
+        );
         let (ver, rel) = split_edition(get("Version"));
         let row = |k: &str, v: &str| {
             let mut lines = v.lines();
@@ -165,7 +204,14 @@ impl Theme for Dnf {
         row("Architecture", get("Arch"));
         row("Installed size", get("Installed Size"));
         let src = get("Source package");
-        row("Source", &if src.is_empty() { String::new() } else { format!("{src}.rpm") });
+        row(
+            "Source",
+            &if src.is_empty() {
+                String::new()
+            } else {
+                format!("{src}.rpm")
+            },
+        );
         row("Repository", get("Repository"));
         row("Summary", get("Summary"));
         row("URL", get("Upstream URL"));
@@ -252,32 +298,71 @@ impl Theme for Dnf {
             .items
             .iter()
             .map(|i| i.display_name().len() + 2)
-            .chain(plan.items.iter().filter_map(|i| i.edition_old.as_ref().map(|_| i.name.len() + 13)))
+            .chain(
+                plan.items
+                    .iter()
+                    .filter_map(|i| i.edition_old.as_ref().map(|_| i.name.len() + 13)),
+            )
             .max()
             .unwrap_or(7)
             .clamp(7, 48);
-        let aw = plan.items.iter().map(|i| i.arch.len()).max().unwrap_or(4).max(4);
+        let aw = plan
+            .items
+            .iter()
+            .map(|i| i.arch.len())
+            .max()
+            .unwrap_or(4)
+            .max(4);
         let vw = plan
             .items
             .iter()
-            .map(|i| i.edition.len().max(i.edition_old.as_ref().map_or(0, |o| o.len())))
+            .map(|i| {
+                i.edition
+                    .len()
+                    .max(i.edition_old.as_ref().map_or(0, |o| o.len()))
+            })
             .max()
             .unwrap_or(7)
             .max(7);
         ui::eprint_line(
-            style(format!("{:<nw$} {:<aw$} {:<vw$} Repository", "Package", "Arch", "Version"))
-                .bold()
-                .to_string(),
+            style(format!(
+                "{:<nw$} {:<aw$} {:<vw$} Repository",
+                "Package", "Arch", "Version"
+            ))
+            .bold()
+            .to_string(),
         );
         let has_requested = !plan.requested.is_empty();
         type Pick<'a> = Box<dyn Fn(&Item) -> bool + 'a>;
         let sections: [(&str, Pick); 7] = [
-            ("Installing:", Box::new(|i: &Item| i.change == Change::Install && (!has_requested || plan.is_requested(i)))),
-            ("Installing dependencies:", Box::new(|i: &Item| i.change == Change::Install && has_requested && !plan.is_requested(i))),
-            ("Upgrading:", Box::new(|i: &Item| i.change == Change::Upgrade)),
-            ("Downgrading:", Box::new(|i: &Item| i.change == Change::Downgrade)),
-            ("Reinstalling:", Box::new(|i: &Item| i.change == Change::Reinstall)),
-            ("Changing architecture:", Box::new(|i: &Item| i.change == Change::ArchChange)),
+            (
+                "Installing:",
+                Box::new(|i: &Item| {
+                    i.change == Change::Install && (!has_requested || plan.is_requested(i))
+                }),
+            ),
+            (
+                "Installing dependencies:",
+                Box::new(|i: &Item| {
+                    i.change == Change::Install && has_requested && !plan.is_requested(i)
+                }),
+            ),
+            (
+                "Upgrading:",
+                Box::new(|i: &Item| i.change == Change::Upgrade),
+            ),
+            (
+                "Downgrading:",
+                Box::new(|i: &Item| i.change == Change::Downgrade),
+            ),
+            (
+                "Reinstalling:",
+                Box::new(|i: &Item| i.change == Change::Reinstall),
+            ),
+            (
+                "Changing architecture:",
+                Box::new(|i: &Item| i.change == Change::ArchChange),
+            ),
             ("Removing:", Box::new(|i: &Item| i.change == Change::Remove)),
         ];
         for (title, pick) in &sections {
@@ -294,7 +379,12 @@ impl Theme for Dnf {
                     Change::Downgrade => style(name).magenta().to_string(),
                     _ => style(name).green().to_string(),
                 };
-                ui::eprint_line(format!("{name} {:<aw$} {:<vw$} {}", i.arch, i.edition, repo_of(i)));
+                ui::eprint_line(format!(
+                    "{name} {:<aw$} {:<vw$} {}",
+                    i.arch,
+                    i.edition,
+                    repo_of(i)
+                ));
                 if let Some(old) = &i.edition_old {
                     let r = format!("   replacing {}", i.name);
                     ui::eprint_line(format!("{r:<nw$} {:<aw$} {old:<vw$} @System", i.arch));
@@ -303,7 +393,11 @@ impl Theme for Dnf {
         }
         ui::eprint_line("");
         ui::eprint_line("Transaction Summary:");
-        let replacing = plan.items.iter().filter(|i| i.edition_old.is_some()).count();
+        let replacing = plan
+            .items
+            .iter()
+            .filter(|i| i.edition_old.is_some())
+            .count();
         let summary = [
             ("Installing:", plan.count(Change::Install)),
             ("Upgrading:", plan.count(Change::Upgrade)),
@@ -320,7 +414,9 @@ impl Theme for Dnf {
         ui::eprint_line("");
         if plan.download > 0 {
             let d = ui::bytes(plan.download);
-            ui::eprint_line(format!("Total size of inbound packages is {d}. Need to download {d}."));
+            ui::eprint_line(format!(
+                "Total size of inbound packages is {d}. Need to download {d}."
+            ));
         }
         let diff = plan.space_diff;
         let detail = format!(
@@ -329,9 +425,15 @@ impl Theme for Dnf {
             ui::bytes(plan.removed_size)
         );
         if diff >= 0 {
-            ui::eprint_line(format!("After this operation, {} extra will be used {detail}.", ui::bytes(diff)));
+            ui::eprint_line(format!(
+                "After this operation, {} extra will be used {detail}.",
+                ui::bytes(diff)
+            ));
         } else {
-            ui::eprint_line(format!("After this operation, {} will be freed {detail}.", ui::bytes(-diff)));
+            ui::eprint_line(format!(
+                "After this operation, {} will be freed {detail}.",
+                ui::bytes(-diff)
+            ));
         }
         if plan.need_reboot {
             ui::warning("this transaction will require a reboot");
@@ -400,13 +502,20 @@ struct DnfView {
 
 impl DnfView {
     fn item_for(&self, nevra_or_file: &str) -> Option<Item> {
-        let plan = Plan { items: self.items.clone(), ..Default::default() };
+        let plan = Plan {
+            items: self.items.clone(),
+            ..Default::default()
+        };
         plan.lookup(nevra_or_file).cloned()
     }
 
     fn end_line(&mut self) {
         if let Some((key, pb, since)) = self.line.take() {
-            let rate = if key.starts_with("dl ") { self.rate.as_str() } else { "" };
+            let rate = if key.starts_with("dl ") {
+                self.rate.as_str()
+            } else {
+                ""
+            };
             let row = done_row(&pb.prefix(), rate, since.elapsed());
             pb.finish_and_clear();
             ui::eprint_line(row);
@@ -437,8 +546,16 @@ impl DnfView {
         let took = self.dl_started.map(|t| t.elapsed()).unwrap_or_default();
         let n = self.dl_count.max(self.downloads);
         ui::eprint_line("-".repeat(ui::term_width().clamp(60, 140).saturating_sub(1)));
-        let size = if self.download_size > 0 { format!(" ({})", ui::bytes(self.download_size)) } else { String::new() };
-        ui::eprint_line(done_row(&format!("[{n}/{n}] Total{size}"), &self.rate, took));
+        let size = if self.download_size > 0 {
+            format!(" ({})", ui::bytes(self.download_size))
+        } else {
+            String::new()
+        };
+        ui::eprint_line(done_row(
+            &format!("[{n}/{n}] Total{size}"),
+            &self.rate,
+            took,
+        ));
     }
 
     fn start_tx(&mut self) {
@@ -477,7 +594,10 @@ impl View for DnfView {
             if self.seen.insert(n.clone()) {
                 self.end_line();
                 let line = match rest.split_once('(') {
-                    Some((kind, pkg)) => format!(">>> Running %{kind} scriptlet: {}", pkg.trim_end_matches(')')),
+                    Some((kind, pkg)) => format!(
+                        ">>> Running %{kind} scriptlet: {}",
+                        pkg.trim_end_matches(')')
+                    ),
                     None => format!(">>> Running %{rest} scriptlet"),
                 };
                 self.println(&line);
@@ -504,12 +624,23 @@ impl View for DnfView {
         }
     }
 
-    fn item(&mut self, verb: Verb, i: usize, total: usize, nevra_s: &str, pct: Option<u64>, done: bool) {
+    fn item(
+        &mut self,
+        verb: Verb,
+        i: usize,
+        total: usize,
+        nevra_s: &str,
+        pct: Option<u64>,
+        done: bool,
+    ) {
         if self.kind != ViewKind::Commit {
             return;
         }
         let item = self.item_for(nevra_s);
-        let shown = item.as_ref().map(nevra).unwrap_or_else(|| nevra_s.to_string());
+        let shown = item
+            .as_ref()
+            .map(nevra)
+            .unwrap_or_else(|| nevra_s.to_string());
         if verb == Verb::Download {
             if self.preloaded_any {
                 return; // preloaded already; zypper is just reading the cache
@@ -574,7 +705,10 @@ impl View for DnfView {
             return;
         }
         let n = self.downloads.max(self.dl_count);
-        let pb = self.total.get_or_insert_with(|| live(&format!("[{n}/{n}] Total"))).clone();
+        let pb = self
+            .total
+            .get_or_insert_with(|| live(&format!("[{n}/{n}] Total")))
+            .clone();
         if let Some(p) = pct {
             pb.set_position(p.min(100));
         }
@@ -589,14 +723,25 @@ impl View for DnfView {
         self.preloaded_any = true;
         self.dl_count += 1;
         let base = file.trim_end_matches(".rpm");
-        let shown = self.item_for(base).map(|i| nevra(&i)).unwrap_or_else(|| base.to_string());
+        let shown = self
+            .item_for(base)
+            .map(|i| nevra(&i))
+            .unwrap_or_else(|| base.to_string());
         let n = self.downloads.max(self.dl_count);
-        let row = done_row(&format!("[{}/{n}] {shown}", self.dl_count), "", self.started.elapsed());
+        let row = done_row(
+            &format!("[{}/{n}] {shown}", self.dl_count),
+            "",
+            self.started.elapsed(),
+        );
         self.println(&row);
     }
 
     fn println(&self, line: &str) {
-        let pb = self.line.as_ref().map(|(_, pb, _)| pb).or(self.total.as_ref());
+        let pb = self
+            .line
+            .as_ref()
+            .map(|(_, pb, _)| pb)
+            .or(self.total.as_ref());
         println_above(pb, line);
     }
 
@@ -626,6 +771,9 @@ mod tests {
         };
         assert_eq!(nevra(&i), "ripgrep-0:15.2.0-1.3.x86_64");
         console::set_colors_enabled(false);
-        assert_eq!(Dnf.message(MsgKind::Error, "No provider of 'x' found."), "No match for argument: x");
+        assert_eq!(
+            Dnf.message(MsgKind::Error, "No provider of 'x' found."),
+            "No match for argument: x"
+        );
     }
 }

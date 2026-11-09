@@ -81,7 +81,12 @@ impl Theme for Uv {
 
     fn confirm(&self, question: &str) -> Result<bool> {
         ask(
-            &format!("{} {} {} ", style("?").cyan().bold(), style(question).bold(), ui::dim("[Y/n]")),
+            &format!(
+                "{} {} {} ",
+                style("?").cyan().bold(),
+                style(question).bold(),
+                ui::dim("[Y/n]")
+            ),
             true,
         )
     }
@@ -106,9 +111,19 @@ impl Theme for Uv {
                 style(s).bold().to_string()
             }
         };
-        let nw = rows.iter().map(|r| r.label().chars().count()).max().unwrap_or(0).min(40);
+        let nw = rows
+            .iter()
+            .map(|r| r.label().chars().count())
+            .max()
+            .unwrap_or(0)
+            .min(40);
         if details {
-            let vw = rows.iter().map(|r| r.version.len()).max().unwrap_or(0).min(30);
+            let vw = rows
+                .iter()
+                .map(|r| r.version.len())
+                .max()
+                .unwrap_or(0)
+                .min(30);
             for r in rows {
                 let name = format!("{:nw$}", ui::truncate(&r.label(), nw));
                 println!(
@@ -133,10 +148,19 @@ impl Theme for Uv {
             let plain = ui::truncate(&r.label(), nw);
             let pad = " ".repeat(nw.saturating_sub(plain.chars().count()));
             let summary = ui::truncate(&r.summary, width.saturating_sub(nw + 6).max(10));
-            println!(" {} {}{pad}  {}", mark(r), name_style(r, plain), ui::dim(&summary));
+            println!(
+                " {} {}{pad}  {}",
+                mark(r),
+                name_style(r, plain),
+                ui::dim(&summary)
+            );
         }
         let n_inst = rows.iter().filter(|r| r.installed).count();
-        let extra = if n_inst > 0 { format!(" ({n_inst} installed)") } else { String::new() };
+        let extra = if n_inst > 0 {
+            format!(" ({n_inst} installed)")
+        } else {
+            String::new()
+        };
         ui::status(format!(
             "Found {}{extra} matching '{query}' in {}",
             ui::plural(rows.len(), "package"),
@@ -145,7 +169,10 @@ impl Theme for Uv {
     }
 
     fn search_empty(&self, query: &str, took: Duration) {
-        ui::status(format!("No packages found matching '{query}' in {}", ui::elapsed(took)));
+        ui::status(format!(
+            "No packages found matching '{query}' in {}",
+            ui::elapsed(took)
+        ));
     }
 
     fn info(&self, fields: &InfoFields) {
@@ -169,7 +196,14 @@ impl Theme for Uv {
             println!("{s}");
         }
         println!();
-        let skip = ["Name", "Version", "Summary", "Description", "Status", "Installed"];
+        let skip = [
+            "Name",
+            "Version",
+            "Summary",
+            "Description",
+            "Status",
+            "Installed",
+        ];
         let rows: Vec<_> = fields
             .iter()
             .filter(|(k, v)| !skip.contains(&k.as_str()) && !v.is_empty())
@@ -182,7 +216,11 @@ impl Theme for Uv {
                 v.to_string()
             };
             let mut lines = val.lines();
-            println!("  {}  {}", ui::dim(&format!("{k:kw$}")), lines.next().unwrap_or(""));
+            println!(
+                "  {}  {}",
+                ui::dim(&format!("{k:kw$}")),
+                lines.next().unwrap_or("")
+            );
             for l in lines {
                 println!("  {}  {l}", " ".repeat(kw));
             }
@@ -196,12 +234,25 @@ impl Theme for Uv {
     }
 
     fn repos(&self, rows: &[RepoRow]) {
-        let aw = rows.iter().map(|r| r.alias.len()).max().unwrap_or(0).min(36);
+        let aw = rows
+            .iter()
+            .map(|r| r.alias.len())
+            .max()
+            .unwrap_or(0)
+            .min(36);
         let width = ui::term_width();
         for r in rows {
-            let dot = if r.enabled { style("●").green().to_string() } else { ui::dim("○") };
+            let dot = if r.enabled {
+                style("●").green().to_string()
+            } else {
+                ui::dim("○")
+            };
             let alias = format!("{:aw$}", ui::truncate(&r.alias, aw));
-            let alias = if r.enabled { style(alias).bold().to_string() } else { ui::dim(&alias) };
+            let alias = if r.enabled {
+                style(alias).bold().to_string()
+            } else {
+                ui::dim(&alias)
+            };
             let prio = if r.priority != "99" {
                 format!(" {}", style(format!("p{}", r.priority)).magenta())
             } else {
@@ -216,10 +267,18 @@ impl Theme for Uv {
         }
         let enabled = rows.iter().filter(|r| r.enabled).count();
         let disabled = rows.len() - enabled;
-        let extra = if disabled > 0 { format!(", {disabled} disabled") } else { String::new() };
+        let extra = if disabled > 0 {
+            format!(", {disabled} disabled")
+        } else {
+            String::new()
+        };
         ui::status(format!(
             "{enabled} {} enabled{extra}",
-            if enabled == 1 { "repository" } else { "repositories" }
+            if enabled == 1 {
+                "repository"
+            } else {
+                "repositories"
+            }
         ));
     }
 
@@ -255,11 +314,18 @@ impl Theme for Uv {
         }
         let n = rows.len();
         let what = if patches {
-            if n == 1 { "1 patch".to_string() } else { format!("{n} patches") }
+            if n == 1 {
+                "1 patch".to_string()
+            } else {
+                format!("{n} patches")
+            }
         } else {
             ui::plural(n, "update")
         };
-        ui::status(format!("{what} available (checked in {})", ui::elapsed(took)));
+        ui::status(format!(
+            "{what} available (checked in {})",
+            ui::elapsed(took)
+        ));
         ui::hint(format!("run {} to install them", ui::cmd(cmd)));
     }
 
@@ -333,7 +399,10 @@ impl Theme for Uv {
         }
         let mut parts = vec![breakdown(plan, true)];
         if plan.download > 0 {
-            parts.push(format!("{} to download", style(ui::bytes(plan.download)).bold()));
+            parts.push(format!(
+                "{} to download",
+                style(ui::bytes(plan.download)).bold()
+            ));
         }
         if plan.space_diff != 0 {
             let sign = if plan.space_diff > 0 { "+" } else { "" };
@@ -376,16 +445,28 @@ impl Theme for Uv {
 
     fn repo_refreshed(&self, repo: &str, updated: bool) -> String {
         if updated {
-            format!(" {} {repo} {}", style("↓").cyan().bold(), style("updated").green())
+            format!(
+                " {} {repo} {}",
+                style("↓").cyan().bold(),
+                style("updated").green()
+            )
         } else {
-            format!(" {} {repo} {}", style("✓").green().bold(), ui::dim("up to date"))
+            format!(
+                " {} {repo} {}",
+                style("✓").green().bold(),
+                ui::dim("up to date")
+            )
         }
     }
 
     fn refresh_done(&self, count: usize, took: Duration) {
         ui::status(format!(
             "Refreshed {count} {} in {}",
-            if count == 1 { "repository" } else { "repositories" },
+            if count == 1 {
+                "repository"
+            } else {
+                "repositories"
+            },
             ui::elapsed(took)
         ));
     }
@@ -458,7 +539,15 @@ impl View for UvView {
         self.set_status(&format!("{}{pct}", name.trim_end_matches(':')));
     }
 
-    fn item(&mut self, verb: Verb, i: usize, total: usize, nevra: &str, _pct: Option<u64>, _done: bool) {
+    fn item(
+        &mut self,
+        verb: Verb,
+        i: usize,
+        total: usize,
+        nevra: &str,
+        _pct: Option<u64>,
+        _done: bool,
+    ) {
         self.end_preload();
         let v = verb as usize;
         if verb == Verb::Download && self.cached {
@@ -490,7 +579,9 @@ impl View for UvView {
     }
 
     fn download(&mut self, file: &str, pct: Option<u64>, rate: Option<i64>) {
-        let rate = rate.map(|r| format!(" · {}/s", ui::bytes(r))).unwrap_or_default();
+        let rate = rate
+            .map(|r| format!(" · {}/s", ui::bytes(r)))
+            .unwrap_or_default();
         let pct = pct.map(|p| format!("{p}%")).unwrap_or_default();
         if let Some(b) = &self.bar {
             if b.verb == 0 {

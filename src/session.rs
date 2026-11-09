@@ -43,7 +43,11 @@ pub fn plan_from_node(n: &Node) -> Plan {
             items.push(Item {
                 change,
                 name: s.attr_or("name", "?").to_string(),
-                kind: s.attr("type").or(s.attr("kind")).unwrap_or("package").to_string(),
+                kind: s
+                    .attr("type")
+                    .or(s.attr("kind"))
+                    .unwrap_or("package")
+                    .to_string(),
                 edition: s.attr_or("edition", "").to_string(),
                 edition_old: s.attr("edition-old").map(str::to_string),
                 arch: s.attr_or("arch", "").to_string(),
@@ -107,7 +111,11 @@ impl<'a> Session<'a> {
             s
         });
         let log = std::env::var_os("PZYP_LOG").and_then(|p| {
-            std::fs::OpenOptions::new().create(true).append(true).open(p).ok()
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(p)
+                .ok()
         });
         let mut reader = StreamReader::new(BufReader::new(Tee { inner: stdout, log }));
         while let Ok(Some(node)) = reader.next_node() {
@@ -249,7 +257,10 @@ impl<'a> Session<'a> {
         if n.attr("done").is_some() {
             return;
         }
-        let rate = n.attr("rate").and_then(|r| r.parse::<i64>().ok()).filter(|r| *r > 0);
+        let rate = n
+            .attr("rate")
+            .and_then(|r| r.parse::<i64>().ok())
+            .filter(|r| *r > 0);
         let pct = n.attr("percent").and_then(|p| p.parse::<u64>().ok());
         let url = n.attr_or("url", "");
         let file = url.rsplit('/').find(|s| !s.is_empty()).unwrap_or(url);
@@ -322,7 +333,10 @@ impl<'a> Session<'a> {
         match self.out.code {
             exit::INF_CAP_NOT_FOUND => {
                 if let Some(q) = first_pkg {
-                    ui::hint(format!("search for it with {}", ui::cmd(&format!("pzyp search {q}"))));
+                    ui::hint(format!(
+                        "search for it with {}",
+                        ui::cmd(&format!("pzyp search {q}"))
+                    ));
                 }
             }
             exit::INF_RPM_SCRIPT_FAILED => {
@@ -335,7 +349,10 @@ impl<'a> Session<'a> {
             _ => {
                 let all = self.out.log.join("\n") + &self.out.stderr;
                 if all.contains("--auto-agree-with-licenses") {
-                    ui::hint(format!("pass {} to accept package licenses", ui::cmd("--agree-licenses")));
+                    ui::hint(format!(
+                        "pass {} to accept package licenses",
+                        ui::cmd("--agree-licenses")
+                    ));
                 }
             }
         }
@@ -430,7 +447,12 @@ pub fn run(mode: Mode, args: Vec<String>, opts: Options) -> Result<i32> {
     }
     let plan = match s.out.plan.take() {
         Some(mut p) if !p.items.is_empty() => {
-            p.requested = args.iter().skip(1).filter(|a| !a.starts_with('-')).cloned().collect();
+            p.requested = args
+                .iter()
+                .skip(1)
+                .filter(|a| !a.starts_with('-'))
+                .cloned()
+                .collect();
             p
         }
         _ => {
@@ -484,7 +506,10 @@ mod tests {
 
     #[test]
     fn quotes() {
-        assert_eq!(quoted("Repository 'Main (OSS)' is up to date."), Some("Main (OSS)"));
+        assert_eq!(
+            quoted("Repository 'Main (OSS)' is up to date."),
+            Some("Main (OSS)")
+        );
     }
 
     #[test]
@@ -500,6 +525,10 @@ mod tests {
         assert_eq!(plan.items[0].change, Change::Upgrade);
         assert_eq!(plan.items[2].change, Change::Remove);
         assert_eq!(plan.download, 2048);
-        assert_eq!(plan.lookup("ripgrep-15.2.0-1.3.x86_64").map(|i| i.name.as_str()), Some("ripgrep"));
+        assert_eq!(
+            plan.lookup("ripgrep-15.2.0-1.3.x86_64")
+                .map(|i| i.name.as_str()),
+            Some("ripgrep")
+        );
     }
 }

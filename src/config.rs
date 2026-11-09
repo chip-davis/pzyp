@@ -57,7 +57,9 @@ pub fn path() -> Option<PathBuf> {
 impl Config {
     /// Load the config file. A broken file is reported but never fatal.
     pub fn load() -> Config {
-        let Some(p) = path() else { return Config::default() };
+        let Some(p) = path() else {
+            return Config::default();
+        };
         let Ok(text) = std::fs::read_to_string(&p) else {
             return Config::default();
         };
@@ -98,7 +100,10 @@ impl Config {
                 if let Some(v) = &value
                     && StyleName::parse(v).is_none()
                 {
-                    bail!("invalid style '{v}' (expected: {})", crate::theme::style_names());
+                    bail!(
+                        "invalid style '{v}' (expected: {})",
+                        crate::theme::style_names()
+                    );
                 }
                 self.style = value;
             }

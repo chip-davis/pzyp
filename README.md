@@ -1,18 +1,40 @@
 # pzyp
 
-A prettier front-end for `zypper`, styled after [uv](https://github.com/astral-sh/uv).
+A prettier front-end for `zypper`. Supports several different 'themes' to change the look to match your favorite package manager.
 
+![pzyp demo](assets/demo.gif)
+
+## Requirements
+
+- openSUSE (Tumbleweed, Slowroll or Leap) — or anything else with `zypper`.
+- `sudo` for transactions when not running as root.
+
+## Install
+
+One-line installer (prebuilt binary for x86_64 / aarch64 Linux):
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/chip-davis/pzyp/releases/latest/download/pzyp-installer.sh | sh
 ```
-$ pzyp add ripgrep
-Resolved 2 packages in 1.03s
- + ripgrep                  15.2.0-1.3
- + ripgrep-bash-completion  15.2.0-1.3
 
-  2 to install · 1.7 MiB to download · +5.4 MiB disk
-? Proceed? [Y/n]
-Downloaded 2 packages in 0.82s
-Installed 2 packages in 0.41s
-✓ 2 installed in 1.31s
+With [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) (downloads a prebuilt binary):
+
+```sh
+cargo binstall pzyp
+```
+
+Or build from source with Cargo:
+
+```sh
+cargo install pzyp
+```
+
+Prebuilt binaries are also on the [releases page](https://github.com/chip-davis/pzyp/releases).
+
+Or from a checkout of this repository:
+
+```sh
+cargo install --path .
 ```
 
 ## Commands
@@ -104,8 +126,8 @@ uses `sudo`, asking for the password up front.
 
 Set `PZYP_LOG=/path/file.xml` to save zypper's raw XML for debugging.
 
-## Install
+## License
 
-```
-cargo install --path .
-```
+Copyright (c) chip
+
+This project is licensed under the MIT license ([LICENSE](./LICENSE) or <http://opensource.org/licenses/MIT>)

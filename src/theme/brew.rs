@@ -43,7 +43,12 @@ fn brew_size(bytes: i64) -> String {
 /// Lay names out in columns, top-to-bottom, like `brew search`.
 fn columns(names: &[String]) -> Vec<String> {
     let tw = ui::term_width().max(20);
-    let w = names.iter().map(|n| console::measure_text_width(n)).max().unwrap_or(0) + 2;
+    let w = names
+        .iter()
+        .map(|n| console::measure_text_width(n))
+        .max()
+        .unwrap_or(0)
+        + 2;
     let cols = (tw / w.max(1)).max(1);
     let rows = names.len().div_ceil(cols);
     (0..rows)
@@ -70,9 +75,12 @@ fn curl_bar() -> ProgressBar {
     pb.set_style(
         ProgressStyle::with_template(&format!("{{bar:{w}}} {{pct}}"))
             .unwrap()
-            .with_key("pct", |s: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
-                let _ = write!(w, "{:>5.1}%", s.fraction() * 100.0);
-            })
+            .with_key(
+                "pct",
+                |s: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                    let _ = write!(w, "{:>5.1}%", s.fraction() * 100.0);
+                },
+            )
             .progress_chars("## "),
     );
     pb
@@ -85,7 +93,10 @@ fn curl_done() -> String {
 
 impl Theme for Brew {
     fn message(&self, kind: MsgKind, text: &str) -> String {
-        let text = match text.strip_prefix("No provider of '").and_then(|r| r.strip_suffix("' found.")) {
+        let text = match text
+            .strip_prefix("No provider of '")
+            .and_then(|r| r.strip_suffix("' found."))
+        {
             Some(pkg) => format!("No available formula with the name \"{pkg}\"."),
             None => text.to_string(),
         };
@@ -119,7 +130,11 @@ impl Theme for Brew {
             if !seen.insert(r.label()) {
                 continue;
             }
-            let name = if r.installed { format!("{} {}", r.name, tick()) } else { r.name.clone() };
+            let name = if r.installed {
+                format!("{} {}", r.name, tick())
+            } else {
+                r.name.clone()
+            };
             if r.kind == "package" || r.kind.is_empty() {
                 packages.push(name);
             } else {
@@ -142,10 +157,23 @@ impl Theme for Brew {
     }
 
     fn info(&self, fields: &InfoFields) {
-        let get = |k: &str| fields.iter().find(|(f, _)| f == k).map(|(_, v)| v.as_str()).unwrap_or("");
+        let get = |k: &str| {
+            fields
+                .iter()
+                .find(|(f, _)| f == k)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
         let arch = get("Arch");
-        let arch = if arch.is_empty() { String::new() } else { format!(" ({arch})") };
-        println!("{}", arrow(&format!("{}: stable {}{arch}", get("Name"), get("Version"))));
+        let arch = if arch.is_empty() {
+            String::new()
+        } else {
+            format!(" ({arch})")
+        };
+        println!(
+            "{}",
+            arrow(&format!("{}: stable {}{arch}", get("Name"), get("Version")))
+        );
         println!("{}", get("Summary"));
         if !get("Upstream URL").is_empty() {
             println!("{}", style(get("Upstream URL")).underlined());
@@ -201,7 +229,10 @@ impl Theme for Brew {
     }
 
     fn already_installed(&self, name: &str) -> String {
-        self.message(MsgKind::Warning, &format!("{name} is already installed and up-to-date."))
+        self.message(
+            MsgKind::Warning,
+            &format!("{name} is already installed and up-to-date."),
+        )
     }
 
     fn note(&self, text: &str) -> String {
@@ -209,14 +240,27 @@ impl Theme for Brew {
     }
 
     fn plan(&self, plan: &Plan, _took: Duration) {
-        let list = |pred: &dyn Fn(&Item) -> bool| -> Vec<&Item> { plan.items.iter().filter(|i| pred(i)).collect() };
-        let names = |v: &[&Item]| v.iter().map(|i| i.display_name()).collect::<Vec<_>>().join(", ");
+        let list = |pred: &dyn Fn(&Item) -> bool| -> Vec<&Item> {
+            plan.items.iter().filter(|i| pred(i)).collect()
+        };
+        let names = |v: &[&Item]| {
+            v.iter()
+                .map(|i| i.display_name())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let has_req = !plan.requested.is_empty();
         let deps = list(&|i| i.change == Change::Install && has_req && !plan.is_requested(i));
         let installs = list(&|i| i.change == Change::Install && (!has_req || plan.is_requested(i)));
         if !deps.is_empty() {
-            let of = installs.first().map(|i| format!(" for {}", i.name)).unwrap_or_default();
-            ui::eprint_line(arrow(&format!("Installing dependencies{of}: {}", names(&deps))));
+            let of = installs
+                .first()
+                .map(|i| format!(" for {}", i.name))
+                .unwrap_or_default();
+            ui::eprint_line(arrow(&format!(
+                "Installing dependencies{of}: {}",
+                names(&deps)
+            )));
         }
         if !installs.is_empty() {
             ui::eprint_line(arrow(&format!("Installing {}", names(&installs))));
@@ -226,10 +270,19 @@ impl Theme for Brew {
             ui::eprint_line(arrow(&format!(
                 "Upgrading {} outdated {}:",
                 ups.len(),
-                if ups.len() == 1 { "package" } else { "packages" }
+                if ups.len() == 1 {
+                    "package"
+                } else {
+                    "packages"
+                }
             )));
             for i in ups {
-                ui::eprint_line(format!("{} {} -> {}", i.name, i.edition_old.as_deref().unwrap_or("?"), i.edition));
+                ui::eprint_line(format!(
+                    "{} {} -> {}",
+                    i.name,
+                    i.edition_old.as_deref().unwrap_or("?"),
+                    i.edition
+                ));
             }
         }
         for (verb, change) in [
@@ -313,7 +366,11 @@ impl Theme for Brew {
             ui::eprint_line(format!(
                 "Updated {} {} ({}).",
                 v.len(),
-                if v.len() == 1 { "repository" } else { "repositories" },
+                if v.len() == 1 {
+                    "repository"
+                } else {
+                    "repositories"
+                },
                 v.join(", ")
             ));
         }
@@ -338,7 +395,10 @@ struct BrewView {
 
 impl BrewView {
     fn item_for(&self, s: &str) -> Option<Item> {
-        let plan = Plan { items: self.items.clone(), ..Default::default() };
+        let plan = Plan {
+            items: self.items.clone(),
+            ..Default::default()
+        };
         plan.lookup(s).cloned()
     }
 
@@ -387,12 +447,23 @@ impl View for BrewView {
         }
     }
 
-    fn item(&mut self, verb: Verb, i: usize, _total: usize, nevra: &str, _pct: Option<u64>, done: bool) {
+    fn item(
+        &mut self,
+        verb: Verb,
+        i: usize,
+        _total: usize,
+        nevra: &str,
+        _pct: Option<u64>,
+        done: bool,
+    ) {
         if self.kind != ViewKind::Commit {
             return;
         }
         let item = self.item_for(nevra);
-        let name = item.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| nevra.to_string());
+        let name = item
+            .as_ref()
+            .map(|i| i.name.clone())
+            .unwrap_or_else(|| nevra.to_string());
         if verb == Verb::Download {
             self.end_spin();
             if self.cached {
@@ -418,7 +489,10 @@ impl View for BrewView {
                         self.println(&arrow(&format!("Upgrading {name}")));
                         self.println(&format!("  {old} -> {}", it.edition));
                     }
-                    self.println(&arrow(&format!("Pouring {}--{}.{}.bottle.tar.gz", it.name, it.edition, it.arch)));
+                    self.println(&arrow(&format!(
+                        "Pouring {}--{}.{}.bottle.tar.gz",
+                        it.name, it.edition, it.arch
+                    )));
                 }
                 (_, None) => self.println(&arrow(&format!("Pouring {nevra}"))),
             }

@@ -177,7 +177,10 @@ impl Change {
 }
 
 pub fn term_width() -> usize {
-    Term::stdout().size_checked().map(|(_, w)| w as usize).unwrap_or(100)
+    Term::stdout()
+        .size_checked()
+        .map(|(_, w)| w as usize)
+        .unwrap_or(100)
 }
 
 /// Pad (or truncate) to exactly `w` display columns.

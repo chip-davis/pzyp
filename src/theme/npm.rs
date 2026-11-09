@@ -32,7 +32,10 @@ fn count(n: usize, word: &str) -> String {
 
 /// Prefix every line, as npm does for multi-line errors.
 fn prefixed(prefix: &str, text: &str) -> String {
-    text.lines().map(|l| format!("{prefix} {l}")).collect::<Vec<_>>().join("\n")
+    text.lines()
+        .map(|l| format!("{prefix} {l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Pad cells to column widths. Widths are measured without ANSI codes.
@@ -56,7 +59,15 @@ fn table(header: &[&str], rows: &[Vec<String>]) {
             .trim_end()
             .to_string()
     };
-    println!("{}", line(header.iter().map(|h| style(h).underlined().to_string()).collect()));
+    println!(
+        "{}",
+        line(
+            header
+                .iter()
+                .map(|h| style(h).underlined().to_string())
+                .collect()
+        )
+    );
     for r in rows {
         println!("{}", line(r.clone()));
     }
@@ -82,19 +93,28 @@ fn gauge_msg(stage: &str, pkg: &str, level: &str, detail: &str) -> String {
         "sill" => style(level).dim().to_string(),
         _ => level.to_string(),
     };
-    let pkg = if pkg.is_empty() { String::new() } else { format!(":{pkg}") };
+    let pkg = if pkg.is_empty() {
+        String::new()
+    } else {
+        format!(":{pkg}")
+    };
     format!("{stage}{pkg}: {lvl} {detail}")
 }
 
 impl Theme for Npm {
     fn message(&self, kind: MsgKind, text: &str) -> String {
-        let text = match text.strip_prefix("No provider of '").and_then(|r| r.strip_suffix("' found.")) {
+        let text = match text
+            .strip_prefix("No provider of '")
+            .and_then(|r| r.strip_suffix("' found."))
+        {
             Some(pkg) => format!("code E404\n404 Not Found - '{pkg}' is not in this registry."),
             None => text.to_string(),
         };
         match kind {
             MsgKind::Error => prefixed(&format!("npm {}", style("ERR!").red()), &text),
-            MsgKind::Warning => prefixed(&format!("npm {}", style("WARN").black().on_yellow()), &text),
+            MsgKind::Warning => {
+                prefixed(&format!("npm {}", style("WARN").black().on_yellow()), &text)
+            }
         }
     }
 
@@ -104,7 +124,11 @@ impl Theme for Npm {
 
     fn spinner(&self, _msg: &str) -> ProgressBar {
         let pb = ProgressBar::new_spinner();
-        pb.set_style(ProgressStyle::with_template("{spinner}").unwrap().tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "));
+        pb.set_style(
+            ProgressStyle::with_template("{spinner}")
+                .unwrap()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
+        );
         pb.enable_steady_tick(Duration::from_millis(80));
         pb
     }
@@ -142,7 +166,10 @@ impl Theme for Npm {
                 ]
             })
             .collect();
-        table(&["NAME", "| DESCRIPTION", "| VERSION", "| REPOSITORY"], &rows);
+        table(
+            &["NAME", "| DESCRIPTION", "| VERSION", "| REPOSITORY"],
+            &rows,
+        );
     }
 
     fn search_empty(&self, query: &str, _took: Duration) {
@@ -150,9 +177,18 @@ impl Theme for Npm {
     }
 
     fn info(&self, fields: &InfoFields) {
-        let get = |k: &str| fields.iter().find(|(f, _)| f == k).map(|(_, v)| v.as_str()).unwrap_or("");
+        let get = |k: &str| {
+            fields
+                .iter()
+                .find(|(f, _)| f == k)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
         println!();
-        let head = style(format!("{}@{}", get("Name"), get("Version"))).green().bold().underlined();
+        let head = style(format!("{}@{}", get("Name"), get("Version")))
+            .green()
+            .bold()
+            .underlined();
         let mut meta = vec![head.to_string()];
         if !get("Arch").is_empty() {
             meta.push(get("Arch").to_string());
@@ -201,7 +237,13 @@ impl Theme for Npm {
         if patches {
             let rows: Vec<Vec<String>> = rows
                 .iter()
-                .map(|u| vec![style(&u.name).red().to_string(), u.category.clone(), u.summary.clone()])
+                .map(|u| {
+                    vec![
+                        style(&u.name).red().to_string(),
+                        u.category.clone(),
+                        u.summary.clone(),
+                    ]
+                })
                 .collect();
             table(&["Patch", "Category", "Summary"], &rows);
             return;
@@ -218,7 +260,10 @@ impl Theme for Npm {
                 ]
             })
             .collect();
-        table(&["Package", "Current", "Wanted", "Latest", "Location"], &rows);
+        table(
+            &["Package", "Current", "Wanted", "Latest", "Location"],
+            &rows,
+        );
     }
 
     fn up_to_date(&self, _took: Duration) {}
@@ -252,14 +297,25 @@ impl Theme for Npm {
         let groups: [(&str, Vec<String>); 4] = [
             (
                 "Need to install the following packages:",
-                plan.items.iter().filter(|i| i.change == Change::Install).map(spec).collect(),
+                plan.items
+                    .iter()
+                    .filter(|i| i.change == Change::Install)
+                    .map(spec)
+                    .collect(),
             ),
             (
                 "Need to update the following packages:",
                 plan.items
                     .iter()
                     .filter(|i| matches!(i.change, Change::Upgrade | Change::Downgrade))
-                    .map(|i| format!("{}@{} -> {}", i.name, i.edition_old.as_deref().unwrap_or("?"), i.edition))
+                    .map(|i| {
+                        format!(
+                            "{}@{} -> {}",
+                            i.name,
+                            i.edition_old.as_deref().unwrap_or("?"),
+                            i.edition
+                        )
+                    })
                     .collect(),
             ),
             (
@@ -272,7 +328,11 @@ impl Theme for Npm {
             ),
             (
                 "Need to remove the following packages:",
-                plan.items.iter().filter(|i| i.change == Change::Remove).map(spec).collect(),
+                plan.items
+                    .iter()
+                    .filter(|i| i.change == Change::Remove)
+                    .map(spec)
+                    .collect(),
             ),
         ];
         for (title, list) in groups {
@@ -338,19 +398,37 @@ impl Theme for Npm {
 
     fn refresh_done(&self, count_all: usize, took: Duration) {
         let updated = REFRESH_UPDATED.load(Ordering::Relaxed);
-        let repos = |n| if n == 1 { "repository".to_string() } else { format!("{n} repositories") };
+        let repos = |n| {
+            if n == 1 {
+                "repository".to_string()
+            } else {
+                format!("{n} repositories")
+            }
+        };
         ui::eprint_line("");
         if updated > 0 {
             ui::eprint_line(format!(
                 "changed {}, and audited {} in {}",
-                if updated == 1 { "1 repository".into() } else { repos(updated) },
-                if count_all == 1 { "1 repository".into() } else { repos(count_all) },
+                if updated == 1 {
+                    "1 repository".into()
+                } else {
+                    repos(updated)
+                },
+                if count_all == 1 {
+                    "1 repository".into()
+                } else {
+                    repos(count_all)
+                },
                 npm_time(took)
             ));
         } else {
             ui::eprint_line(format!(
                 "up to date, audited {} in {}",
-                if count_all == 1 { "1 repository".into() } else { repos(count_all) },
+                if count_all == 1 {
+                    "1 repository".into()
+                } else {
+                    repos(count_all)
+                },
                 npm_time(took)
             ));
         }
@@ -369,8 +447,13 @@ struct NpmView {
 
 impl NpmView {
     fn name_for(&self, s: &str) -> String {
-        let plan = Plan { items: self.items.clone(), ..Default::default() };
-        plan.lookup(s).map(|i| i.name.clone()).unwrap_or_else(|| s.to_string())
+        let plan = Plan {
+            items: self.items.clone(),
+            ..Default::default()
+        };
+        plan.lookup(s)
+            .map(|i| i.name.clone())
+            .unwrap_or_else(|| s.to_string())
     }
 }
 
@@ -393,7 +476,15 @@ impl View for NpmView {
         }
     }
 
-    fn item(&mut self, verb: Verb, i: usize, total: usize, nevra: &str, _pct: Option<u64>, _done: bool) {
+    fn item(
+        &mut self,
+        verb: Verb,
+        i: usize,
+        total: usize,
+        nevra: &str,
+        _pct: Option<u64>,
+        _done: bool,
+    ) {
         let name = self.name_for(nevra);
         let (level, detail) = match verb {
             Verb::Download => ("http", format!("fetch GET 200 {nevra}.rpm")),
@@ -406,12 +497,18 @@ impl View for NpmView {
             self.pb.set_length(total.max(1) as u64);
             self.pb.set_position(i.saturating_sub(1) as u64);
         }
-        self.pb.set_message(gauge_msg(self.stage, &name, level, &detail));
+        self.pb
+            .set_message(gauge_msg(self.stage, &name, level, &detail));
     }
 
     fn download(&mut self, file: &str, pct: Option<u64>, _rate: Option<i64>) {
         let p = pct.map(|p| format!(" {p}%")).unwrap_or_default();
-        self.pb.set_message(gauge_msg(self.stage, "", "http", &format!("fetch GET 200 {file}{p}")));
+        self.pb.set_message(gauge_msg(
+            self.stage,
+            "",
+            "http",
+            &format!("fetch GET 200 {file}{p}"),
+        ));
     }
 
     fn preload(&mut self, detail: &str, pct: Option<u64>, _done: bool) {
@@ -419,12 +516,22 @@ impl View for NpmView {
             self.pb.set_length(100);
             self.pb.set_position(p.min(100));
         }
-        self.pb.set_message(gauge_msg(self.stage, "", "http", &format!("fetch {detail}")));
+        self.pb.set_message(gauge_msg(
+            self.stage,
+            "",
+            "http",
+            &format!("fetch {detail}"),
+        ));
     }
 
     fn preloaded(&mut self, file: &str) {
         let name = self.name_for(file.trim_end_matches(".rpm"));
-        self.pb.set_message(gauge_msg(self.stage, &name, "http", &format!("fetch GET 200 {file}")));
+        self.pb.set_message(gauge_msg(
+            self.stage,
+            &name,
+            "http",
+            &format!("fetch GET 200 {file}"),
+        ));
     }
 
     fn println(&self, line: &str) {

@@ -85,7 +85,10 @@ fn progress_line(frac: f64) -> String {
 
 impl Theme for Apt {
     fn message(&self, kind: MsgKind, text: &str) -> String {
-        let text = match text.strip_prefix("No provider of '").and_then(|r| r.strip_suffix("' found.")) {
+        let text = match text
+            .strip_prefix("No provider of '")
+            .and_then(|r| r.strip_suffix("' found."))
+        {
             Some(pkg) => format!("Unable to locate package {pkg}"),
             None => text.to_string(),
         };
@@ -120,7 +123,13 @@ impl Theme for Apt {
                 (None, true) => " [installed]".into(),
                 _ => String::new(),
             };
-            println!("{}/{} {} {}{state}", style(r.label()).green().bold(), r.repo, r.version, r.arch);
+            println!(
+                "{}/{} {} {}{state}",
+                style(r.label()).green().bold(),
+                r.repo,
+                r.version,
+                r.arch
+            );
             println!("  {}", r.summary);
             println!();
         }
@@ -132,7 +141,13 @@ impl Theme for Apt {
     }
 
     fn info(&self, fields: &InfoFields) {
-        let get = |k: &str| fields.iter().find(|(f, _)| f == k).map(|(_, v)| v.as_str()).unwrap_or("");
+        let get = |k: &str| {
+            fields
+                .iter()
+                .find(|(f, _)| f == k)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
         let row = |k: &str, v: &str| {
             if !v.is_empty() {
                 println!("{}: {v}", style(k).bold());
@@ -176,7 +191,12 @@ impl Theme for Apt {
         ui::eprint_line("Listing... Done");
         for u in rows {
             if patches {
-                println!("{}/{} {}", style(&u.name).green().bold(), u.category, u.summary);
+                println!(
+                    "{}/{} {}",
+                    style(&u.name).green().bold(),
+                    u.category,
+                    u.summary
+                );
             } else {
                 println!(
                     "{}/{} {} {} [upgradable from: {}]",
@@ -227,7 +247,11 @@ impl Theme for Apt {
     fn plan(&self, plan: &Plan, _took: Duration) {
         tree_lines();
         let names = |pred: &dyn Fn(&Item) -> bool| -> Vec<String> {
-            plan.items.iter().filter(|i| pred(i)).map(|i| i.display_name()).collect()
+            plan.items
+                .iter()
+                .filter(|i| pred(i))
+                .map(|i| i.display_name())
+                .collect()
         };
         let has_req = !plan.requested.is_empty();
         let sections: [(&str, Vec<String>); 6] = [
@@ -235,10 +259,22 @@ impl Theme for Apt {
                 "The following additional packages will be installed:",
                 names(&|i| has_req && i.change == Change::Install && !plan.is_requested(i)),
             ),
-            ("The following packages will be REMOVED:", names(&|i| i.change == Change::Remove)),
-            ("The following NEW packages will be installed:", names(&|i| i.change == Change::Install)),
-            ("The following packages will be upgraded:", names(&|i| i.change == Change::Upgrade)),
-            ("The following packages will be DOWNGRADED:", names(&|i| i.change == Change::Downgrade)),
+            (
+                "The following packages will be REMOVED:",
+                names(&|i| i.change == Change::Remove),
+            ),
+            (
+                "The following NEW packages will be installed:",
+                names(&|i| i.change == Change::Install),
+            ),
+            (
+                "The following packages will be upgraded:",
+                names(&|i| i.change == Change::Upgrade),
+            ),
+            (
+                "The following packages will be DOWNGRADED:",
+                names(&|i| i.change == Change::Downgrade),
+            ),
             (
                 "The following packages will be reinstalled:",
                 names(&|i| matches!(i.change, Change::Reinstall | Change::ArchChange)),
@@ -264,7 +300,10 @@ impl Theme for Apt {
         parts.push(format!("{} to remove", plan.count(Change::Remove)));
         ui::eprint_line(format!("{}.", parts.join(", ")));
         if plan.download > 0 {
-            ui::eprint_line(format!("Need to get {} of archives.", apt_size(plan.download)));
+            ui::eprint_line(format!(
+                "Need to get {} of archives.",
+                apt_size(plan.download)
+            ));
         }
         if plan.space_diff >= 0 {
             ui::eprint_line(format!(
@@ -336,7 +375,10 @@ struct AptView {
 
 impl AptView {
     fn item_for(&self, s: &str) -> Option<Item> {
-        let plan = Plan { items: self.items.clone(), ..Default::default() };
+        let plan = Plan {
+            items: self.items.clone(),
+            ..Default::default()
+        };
         plan.lookup(s).cloned()
     }
 
@@ -361,8 +403,16 @@ impl AptView {
             return;
         }
         self.fetched = true;
-        let secs = self.dl_started.map(|t| t.elapsed()).unwrap_or_default().as_secs_f64();
-        let rate = if secs > 0.0 { (self.download_size as f64 / secs) as i64 } else { 0 };
+        let secs = self
+            .dl_started
+            .map(|t| t.elapsed())
+            .unwrap_or_default()
+            .as_secs_f64();
+        let rate = if secs > 0.0 {
+            (self.download_size as f64 / secs) as i64
+        } else {
+            0
+        };
         self.println(&format!(
             "Fetched {} in {}s ({}/s)",
             apt_size(self.download_size),
@@ -410,12 +460,23 @@ impl View for AptView {
         {
             self.settle();
             let pkg = pkg.trim_end_matches(')');
-            let name = self.item_for(pkg).map(|i| i.name).unwrap_or_else(|| pkg.to_string());
+            let name = self
+                .item_for(pkg)
+                .map(|i| i.name)
+                .unwrap_or_else(|| pkg.to_string());
             self.println(&format!("Processing triggers for {name} ..."));
         }
     }
 
-    fn item(&mut self, verb: Verb, i: usize, _total: usize, nevra: &str, _pct: Option<u64>, done: bool) {
+    fn item(
+        &mut self,
+        verb: Verb,
+        i: usize,
+        _total: usize,
+        nevra: &str,
+        _pct: Option<u64>,
+        done: bool,
+    ) {
         if self.kind != ViewKind::Commit {
             return;
         }
@@ -433,7 +494,10 @@ impl View for AptView {
         if self.current.as_ref().map(|(v, n, _, _)| (*v, *n)) != Some((verb, i)) {
             self.settle();
             let item = self.item_for(nevra);
-            let shown = item.as_ref().map(|i| i.name.clone()).unwrap_or_else(|| nevra.to_string());
+            let shown = item
+                .as_ref()
+                .map(|i| i.name.clone())
+                .unwrap_or_else(|| nevra.to_string());
             let lines = match (verb, &item) {
                 (Verb::Remove, Some(it)) => vec![format!("Removing {shown} ({}) ...", it.edition)],
                 (Verb::Remove, None) => vec![format!("Removing {shown} ...")],
@@ -445,7 +509,10 @@ impl View for AptView {
                     }
                     v.push(format!("Preparing to unpack {file} ..."));
                     match &it.edition_old {
-                        Some(old) => v.push(format!("Unpacking {shown} ({}) over ({old}) ...", it.edition)),
+                        Some(old) => v.push(format!(
+                            "Unpacking {shown} ({}) over ({old}) ...",
+                            it.edition
+                        )),
                         None => v.push(format!("Unpacking {shown} ({}) ...", it.edition)),
                     }
                     v
@@ -507,6 +574,9 @@ mod tests {
         assert_eq!(apt_size(523), "523 B");
         assert_eq!(commas(1234567), "1,234,567");
         console::set_colors_enabled(false);
-        assert_eq!(Apt.message(MsgKind::Error, "No provider of 'x' found."), "E: Unable to locate package x");
+        assert_eq!(
+            Apt.message(MsgKind::Error, "No provider of 'x' found."),
+            "E: Unable to locate package x"
+        );
     }
 }

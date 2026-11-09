@@ -100,9 +100,12 @@ fn line_bar(prefix: &str) -> ProgressBar {
             l.prefix_w, l.msg_w
         ))
         .unwrap()
-        .with_key("pbar", move |s: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
-            let _ = w.write_str(&bar_str(s.fraction() as f64, l.bar_w));
-        }),
+        .with_key(
+            "pbar",
+            move |s: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                let _ = w.write_str(&bar_str(s.fraction() as f64, l.bar_w));
+            },
+        ),
     );
     pb.set_prefix(prefix.to_string());
     pb
@@ -316,7 +319,9 @@ impl Theme for Pacman {
             .map(|p| {
                 p.items
                     .iter()
-                    .filter(|i| i.change != Change::Remove && (i.kind == "package" || i.kind.is_empty()))
+                    .filter(|i| {
+                        i.change != Change::Remove && (i.kind == "package" || i.kind.is_empty())
+                    })
                     .count()
             })
             .unwrap_or(0);
@@ -343,7 +348,10 @@ impl Theme for Pacman {
     }
 
     fn already_installed(&self, name: &str) -> String {
-        self.message(MsgKind::Warning, &format!("{name} is up to date -- skipping"))
+        self.message(
+            MsgKind::Warning,
+            &format!("{name} is up to date -- skipping"),
+        )
     }
 
     fn note(&self, text: &str) -> String {
@@ -368,18 +376,31 @@ impl Theme for Pacman {
                 }
             })
             .collect();
-        ui::eprint_line(wrap_list(&format!("Packages ({})", plan.items.len()), &words));
+        ui::eprint_line(wrap_list(
+            &format!("Packages ({})", plan.items.len()),
+            &words,
+        ));
         ui::eprint_line("");
         let row = |label: &str, v: i64| {
-            ui::eprint_line(format!("{} {:>12}", style(format!("{label:<21}")).bold(), size(v)));
+            ui::eprint_line(format!(
+                "{} {:>12}",
+                style(format!("{label:<21}")).bold(),
+                size(v)
+            ));
         };
         if plan.download > 0 {
             row("Total Download Size:", plan.download);
         }
         if removing {
-            row("Total Removed Size:", plan.removed_size.max(-plan.space_diff));
+            row(
+                "Total Removed Size:",
+                plan.removed_size.max(-plan.space_diff),
+            );
         } else if plan.only(Change::Install) {
-            row("Total Installed Size:", plan.installed_size.max(plan.space_diff));
+            row(
+                "Total Installed Size:",
+                plan.installed_size.max(plan.space_diff),
+            );
         } else {
             row("Net Upgrade Size:", plan.space_diff);
         }
@@ -475,7 +496,10 @@ impl PacView {
     }
 
     fn display(&self, nevra: &str) -> (String, Option<Change>) {
-        let plan = Plan { items: self.items.clone(), ..Default::default() };
+        let plan = Plan {
+            items: self.items.clone(),
+            ..Default::default()
+        };
         match plan.lookup(nevra) {
             Some(i) => (i.display_name(), Some(i.change)),
             None => (nevra.to_string(), None),
@@ -526,7 +550,15 @@ impl View for PacView {
         }
     }
 
-    fn item(&mut self, verb: Verb, i: usize, total: usize, nevra: &str, pct: Option<u64>, done: bool) {
+    fn item(
+        &mut self,
+        verb: Verb,
+        i: usize,
+        total: usize,
+        nevra: &str,
+        pct: Option<u64>,
+        done: bool,
+    ) {
         if self.kind != ViewKind::Commit {
             return;
         }
@@ -610,7 +642,11 @@ impl View for PacView {
         let line = static_line(&format!(" {}", pkg_file(file)), "");
         self.println(&line);
         if let Some(pb) = &self.total {
-            pb.set_prefix(format!(" Total ({}/{})", self.preloaded, self.downloads.max(self.preloaded)));
+            pb.set_prefix(format!(
+                " Total ({}/{})",
+                self.preloaded,
+                self.downloads.max(self.preloaded)
+            ));
         }
     }
 
@@ -633,14 +669,20 @@ mod tests {
     fn helpers() {
         assert_eq!(size(1572864), "1.50 MiB");
         assert_eq!(size(512), "0.50 KiB");
-        assert_eq!(pkg_file("ripgrep-15.2.0-1.3.x86_64.rpm"), "ripgrep-15.2.0-1.3-x86_64");
+        assert_eq!(
+            pkg_file("ripgrep-15.2.0-1.3.x86_64.rpm"),
+            "ripgrep-15.2.0-1.3-x86_64"
+        );
         set_candy(false);
         assert_eq!(bar_str(0.5, 10), "#####-----");
         set_candy(true);
         assert_eq!(console::strip_ansi_codes(&bar_str(0.5, 10)), "-----c o  ");
         assert_eq!(console::strip_ansi_codes(&bar_str(0.6, 10)), "------Co  ");
         assert_eq!(bar_str(1.0, 6), "------");
-        assert_eq!(step_name("Checking for file conflicts: (1 skipped)"), "checking for file conflicts");
+        assert_eq!(
+            step_name("Checking for file conflicts: (1 skipped)"),
+            "checking for file conflicts"
+        );
         console::set_colors_enabled(false);
         assert_eq!(
             Pacman.message(MsgKind::Error, "No provider of 'nosuch' found."),

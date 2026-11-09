@@ -91,7 +91,10 @@ pub fn search(terms: &[String], o: SearchOpts) -> Result<i32> {
     let repos = repos.transpose()?;
 
     let query = terms.join(" ");
-    let primary = details.as_ref().or(plain.as_ref()).expect("at least one search ran");
+    let primary = details
+        .as_ref()
+        .or(plain.as_ref())
+        .expect("at least one search ran");
     if primary.code == exit::INF_CAP_NOT_FOUND {
         th.search_empty(&query, t.elapsed());
         return Ok(1);
@@ -119,12 +122,20 @@ pub fn search(terms: &[String], o: SearchOpts) -> Result<i32> {
             .map(|l| {
                 l.children_named("repo")
                     .map(|r| {
-                        (r.attr_or("name", "").to_string(), short_alias(r.attr_or("alias", "")))
+                        (
+                            r.attr_or("name", "").to_string(),
+                            short_alias(r.attr_or("alias", "")),
+                        )
                     })
                     .collect()
             })
             .unwrap_or_default();
-        merge_rows(details.as_ref().map(solvables).unwrap_or_default(), &summaries, &aliases, o.details)
+        merge_rows(
+            details.as_ref().map(solvables).unwrap_or_default(),
+            &summaries,
+            &aliases,
+            o.details,
+        )
     } else {
         solvables(primary).into_iter().map(row).collect()
     };
@@ -221,16 +232,24 @@ pub fn info(pkgs: &[String]) -> Result<i32> {
             }
             _ => {}
         }
-        let Some(fields) = parse_info(text) else { continue };
+        let Some(fields) = parse_info(text) else {
+            continue;
+        };
         if shown > 0 {
             println!();
         }
         shown += 1;
         th.info(&fields);
     }
-    if shown == 0 && out.messages("error").next().is_none() && out.messages("warning").next().is_none() {
+    if shown == 0
+        && out.messages("error").next().is_none()
+        && out.messages("warning").next().is_none()
+    {
         ui::error(format!("no package found matching '{}'", pkgs.join(" ")));
-        ui::hint(format!("try {}", ui::cmd(&format!("pzyp search {}", pkgs.join(" ")))));
+        ui::hint(format!(
+            "try {}",
+            ui::cmd(&format!("pzyp search {}", pkgs.join(" ")))
+        ));
         return Ok(exit::INF_CAP_NOT_FOUND);
     }
     Ok(if shown > 0 { 0 } else { out.code.max(1) })
@@ -288,7 +307,11 @@ pub fn updates(patches: bool) -> Result<i32> {
     let t = Instant::now();
     let th = theme();
     let sp = th.spinner("Checking for updates…");
-    let args: &[&str] = if patches { &["list-patches"] } else { &["list-updates"] };
+    let args: &[&str] = if patches {
+        &["list-patches"]
+    } else {
+        &["list-updates"]
+    };
     let out = zypper::query(args)?;
     sp.finish_and_clear();
     if !exit::is_success(out.code) {
@@ -307,7 +330,11 @@ pub fn updates(patches: bool) -> Result<i32> {
         .map(|u| UpdateRow {
             name: u.attr_or("name", "").to_string(),
             arch: u.attr_or("arch", "").to_string(),
-            repo: short_alias(u.child("source").map(|s| s.attr_or("alias", "")).unwrap_or("")),
+            repo: short_alias(
+                u.child("source")
+                    .map(|s| s.attr_or("alias", ""))
+                    .unwrap_or(""),
+            ),
             old: u.attr_or("edition-old", "").to_string(),
             new: u.attr_or("edition", "").to_string(),
             category: u.attr_or("category", "").to_string(),
@@ -344,7 +371,11 @@ mod tests {
 <solvable status="not-installed" name="zsh" kind="package" edition="5.9-1" arch="x86_64" repository="Main Repository (OSS)"/>
 </solvable-list></search-result></stream>"#;
         let nodes = crate::xml::parse_all(xml);
-        let out = Output { code: 0, nodes, stderr: String::new() };
+        let out = Output {
+            code: 0,
+            nodes,
+            stderr: String::new(),
+        };
         let mut aliases = HashMap::new();
         aliases.insert("Main Repository (OSS)".to_string(), "oss".to_string());
         let rows = merge_rows(solvables(&out), &HashMap::new(), &aliases, false);

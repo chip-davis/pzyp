@@ -208,7 +208,15 @@ pub trait View {
     /// An uncounted step with optional percentage ("Checking for file conflicts").
     fn step(&mut self, name: &str, pct: Option<u64>, done: bool);
     /// A counted item: "(3/12) Installing: foo-1.0-1.x86_64".
-    fn item(&mut self, verb: Verb, i: usize, total: usize, nevra: &str, pct: Option<u64>, done: bool);
+    fn item(
+        &mut self,
+        verb: Verb,
+        i: usize,
+        total: usize,
+        nevra: &str,
+        pct: Option<u64>,
+        done: bool,
+    );
     /// Byte-level progress of a single download.
     fn download(&mut self, file: &str, pct: Option<u64>, rate: Option<i64>);
     /// Parallel package preloading ("3.1 MiB / 4.5 MiB · 2.5 KiB/s").
@@ -273,7 +281,11 @@ pub(crate) fn ask(prompt: &str, default: bool) -> Result<bool> {
         }
     }
     let a = line.trim().to_lowercase();
-    Ok(if a.is_empty() { default } else { a == "y" || a == "yes" })
+    Ok(if a.is_empty() {
+        default
+    } else {
+        a == "y" || a == "yes"
+    })
 }
 
 /// The names a style list should show, e.g. "uv, pacman, dnf, apt, brew, npm".
