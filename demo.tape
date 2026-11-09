@@ -22,25 +22,29 @@ Set TypingSpeed 60ms
 Set Theme { "name": "vague", "black": "#252530", "red": "#d8647e", "green": "#7fa563", "yellow": "#f3be7c", "blue": "#6e94b2", "magenta": "#bb9dbd", "cyan": "#aeaed1", "white": "#cdcdcd", "brightBlack": "#606079", "brightRed": "#e08398", "brightGreen": "#99b782", "brightYellow": "#f5cb96", "brightBlue": "#8ba9c1", "brightMagenta": "#c9b1ca", "brightCyan": "#bebeda", "brightWhite": "#d7d7d7", "background": "#141415", "foreground": "#cdcdcd", "selection": "#252530", "cursor": "#cdcdcd" }
 
 Hide
-Type `export PATH="$PWD/target/release:$PATH" PS1='\[\e[34m\]$\[\e[0m\] ' PZYP_STYLE=uv`
+Type `export PATH="$PWD/target/release:$PATH" PS1='\[\e[34m\]>\[\e[0m\] ' PZYP_STYLE=uv`
 Enter
 Type `sudo -S -v <<< "$PZYP_DEMO_PW" 2>/dev/null; unset PZYP_DEMO_PW`
 Enter
-Type "sudo zypper --quiet --non-interactive remove cowsay >/dev/null 2>&1; clear"
+Wait
+# Refresh off camera so resolving is quick, and start without cowsay.
+Type "sudo zypper --quiet --non-interactive refresh >/dev/null 2>&1; sudo zypper --quiet --non-interactive remove cowsay >/dev/null 2>&1; clear"
 Enter
-Sleep 2s
+Wait@120s
 Show
 
 # Search and info
 Type "pzyp search cowsay"
 Sleep 400ms
 Enter
-Sleep 3s
+Wait
+Sleep 2s
 
 Type "pzyp info cowsay"
 Sleep 400ms
 Enter
-Sleep 4s
+Wait
+Sleep 3s
 
 Type "clear"
 Enter
@@ -50,12 +54,15 @@ Sleep 300ms
 Type "pzyp add cowsay"
 Sleep 400ms
 Enter
-Sleep 3s
+Wait+Screen@60s /Proceed\?/
+Sleep 1.5s
 Enter
-Sleep 5s
+Wait@60s
+Sleep 1.5s
 
 Type "cowsay moo"
 Enter
+Wait
 Sleep 2.5s
 
 Type "clear"
@@ -66,9 +73,11 @@ Sleep 300ms
 Type "pzyp --style pacman rm cowsay"
 Sleep 400ms
 Enter
-Sleep 3s
+Wait+Screen@60s /remove these packages\?/
+Sleep 1.5s
 Enter
-Sleep 4s
+Wait@60s
+Sleep 2.5s
 
 Type "clear"
 Enter
@@ -78,9 +87,11 @@ Sleep 300ms
 Type "pzyp --style dnf add -D cowsay"
 Sleep 400ms
 Enter
-Sleep 3.5s
+Wait@60s
+Sleep 2.5s
 
 Type "pzyp --style apt add -D cowsay"
 Sleep 400ms
 Enter
-Sleep 3.5s
+Wait@60s
+Sleep 3s
