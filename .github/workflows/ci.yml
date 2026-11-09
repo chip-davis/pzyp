@@ -78,7 +78,17 @@ jobs:
     steps:
       - name: Install build tools (openSUSE)
         if: ${{ matrix.container }}
-        run: zypper --non-interactive install --no-recommends bash git gcc tar gzip curl
+        run: |
+          # The image sets no PATH of its own; once a step adds to $GITHUB_PATH
+          # the runner would otherwise drop the system dirs (and bash with them).
+          echo "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$GITHUB_PATH"
+          # Tumbleweed mirrors are sometimes caught mid-sync; retry a few times.
+          for i in 1 2 3; do
+            zypper --non-interactive --gpg-auto-import-keys install --no-recommends git gcc tar gzip curl && exit 0
+            echo "zypper failed (mirror mid-sync?), retrying in 30s"
+            sleep 30
+          done
+          exit 1
       - uses: actions/checkout@v7
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
